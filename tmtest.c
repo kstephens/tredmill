@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.5 1999-12-28 20:42:17 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.6 1999-12-28 23:44:24 stephensk Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -15,7 +15,7 @@ static void my_prompt()
 #endif 
 }
 
-#define my_rand(R) ((unsigned long) (rand() & 32767) * (R) / 32768)
+#define my_rand(R) ((unsigned long) ((rand() >> 4) & 32767) * (R) / 32768)
 
 static const char _run_sep[] = "*************************************************************\n";
 
@@ -312,7 +312,7 @@ static void test7()
 
     if ( (i & 3) == 0 ) {
       int size = my_rand(nsize);
-      my_cons **p = &roots[size % 100];
+      my_cons **p = &roots[my_rand(100)];
       if ( *p ) {
 	(*p)->cdr = c;
 	tm_write_barrier_pure(*p);
@@ -329,8 +329,51 @@ static void test7()
 }
 #endif
 
+#if 1
+static void test8()
+{
+  int i;
+  my_cons *root = 0, *roots[20];
+
+  memset(roots, 0, sizeof(roots));
+  do { 
+    for ( i = 0; i < nalloc; i ++ ) {
+      my_cons *c = my_cons_(my_int(i), 0, nsize);
+      
+      root = c;
+      
+      /* If c is not garbage. */
+      if ( my_rand(2) == 0 ) {
+	my_cons **p = &roots[my_rand(sizeof(roots)/sizeof(roots[0]))];
+
+	/* chain c->cdr to root[p] */
+	if ( my_rand(20) ) {
+	  c->cdr = *p;
+	  tm_write_barrier_pure(c);
+	}
+
+	/* Put on root list. */
+	*p = c;
+	tm_write_root((void**) p);
+      }
+    }
+
+    for ( i = 0; i < sizeof(roots)/sizeof(roots[0]); i ++ ) {
+      print_my_cons_list("test8", roots[i]);
+    }
+    tm_print_stats();
+  } while ( 1 );
+
+  print_my_cons_list("test8", root);
+
+  end_test();
+}
+#endif
+
 int main(int argc, char **argv, char **envp)
 {
+
+  fprintf(stderr, "%s: running\n", argv[0]);
 
   srand(0x54ae3523);
 
@@ -346,12 +389,15 @@ int main(int argc, char **argv, char **envp)
   run_test(test5);
   run_test(test6);
   run_test(test7);
+  run_test(test8);
 
   tm_gc_full();
   tm_print_stats();
 
   tm_msg(_run_sep);
   tm_msg("* %s\n", "END");
+
+  fprintf(stderr, "%s: stopped\n", argv[0]);
 
   return 0;
 }

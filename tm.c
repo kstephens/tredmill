@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.6 1999-12-28 20:42:16 stephensk Exp $ */
+/* $Id: tm.c,v 1.7 1999-12-28 23:44:22 stephensk Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -33,7 +33,11 @@ int tm_sweeping = 0;
 FILE *tm_msg_file = 0;
 const char *tm_msg_prefix = "";
 
-static const char *_tm_msg_enable = "NpwtFWVAg*r";
+static const char *_tm_msg_enable = 
+// "sNpwtFWVAg*r"
+// "gFWA"
+  "gTFA"
+;
 
 /****************************************************************************/
 /* Safety */
@@ -60,14 +64,13 @@ static const char *tm_color_name[] = {
   "ECRU",  /* tm_ECRU */
   "GREY",  /* tm_GREY */
   "BLACK", /* tm_BLACK */
+
   "TOTAL", /* tm_TOTAL */
-  "b",
-  "D",
-  "d",
-  "M",
-  "m",
-  "W",
-  "w",
+
+  "b",     /* tm_B */
+  "n",     /* tm_NU */
+  "u",     /* tm_b */
+  "p",     /* tm_b_NU */
   0
 };
 
@@ -122,7 +125,7 @@ static const tm_color tm_phase_alloc[] = {
   tm_EALL,  /* tm_ALLOC */
   tm_EALL,  /* tm_ROOT */
   tm_EALL,  /* tm_MARK */
-  tm_BLACK, /* tm_SWEEP */
+  tm_GREY,  /* tm_SWEEP */
   tm_EALL   /* tm_UNMARK */
 };
 
@@ -645,7 +648,7 @@ tm_block *tm_block_alloc(size_t size)
       if ( bi->size == size ) {
 	tm_list_remove(bi);
 	b = bi;
-	tm_msg("b r bl%p\n", (void*) b);
+	tm_msg("b r b%p\n", (void*) b);
 	break;
       }
     }
@@ -729,6 +732,7 @@ tm_block *tm_block_alloc(size_t size)
 static __inline
 void tm_block_free(tm_block *b)
 {
+  tm_assert_test(b);
   tm_assert_test(b->type);
   tm_assert_test(tm_list_color(b) == tm_LIVE_BLOCK);
 
@@ -756,7 +760,7 @@ void tm_block_free(tm_block *b)
 
   // tm_validate_lists();
 
-  tm_msg("b f bl%p\n", (void*) b);
+  tm_msg("b f b%p\n", (void*) b);
 }
 
 
@@ -767,12 +771,15 @@ static tm_block * tm_block_alloc_for_type(tm_type *t)
   /* Allocate a new block */
   b = tm_block_alloc(tm_block_SIZE);
 
-  /* Add to type's block list. */
-  b->type = t;
-  t->n[tm_B] ++;
-  tm_list_insert(&t->blocks, b);
+  if ( b ) {
+    /* Add to type's block list. */
+    b->type = t;
+    t->n[tm_B] ++;
+    tm_list_insert(&t->blocks, b);
+    
+  }
 
-  tm_msg("b a bl%p t%p\n", (void*) b, (void*) t);
+  tm_msg("b a b%p t%p\n", (void*) b, (void*) t);
 
   return b;
 }
@@ -837,12 +844,16 @@ static __inline void tm_node_delete(tm_node *n, tm_block *b)
 
   // tm_validate_lists();
 
-  tm_msg("N d n%p t%p\n", (void*) n, (void*) t);
+  tm_msg("N d n%p[%lu] t%p\n", 
+	 (void*) n,
+	 (unsigned long) t->size,
+	 (void*) t);
 }
 
-static __inline void tm_node_alloc_some(tm_type *t, long left)
+static __inline int tm_node_alloc_some(tm_type *t, long left)
 {
-  size_t count = 0, bytes = 0;
+  int count = 0;
+  size_t bytes = 0;
 
   /* First block alloc? */
   do {
@@ -850,6 +861,8 @@ static __inline void tm_node_alloc_some(tm_type *t, long left)
 
     if ( ! t->ab ) {
       t->ab = tm_block_alloc_for_type(t);
+      if ( ! t->ab )
+	break;
     }
     b = t->ab;
     //tm_block_validate(b);
@@ -894,6 +907,8 @@ static __inline void tm_node_alloc_some(tm_type *t, long left)
     tm_msg("N i n%lu b%lu t%lu\n", count, bytes, t->n[tm_WHITE]);
 
   tm_assert_test(t->n[tm_WHITE]);
+
+  return count;
 }
 
 /************************************************************************/
@@ -973,7 +988,7 @@ static __inline tm_block *tm_ptr_to_block(char *p)
   b = p - offset;
   if ( offset == 0 ) {
     b -= tm_block_SIZE;
-    tm_msg("P bb p%p bl%p\n", (void*) p, (void*) b);
+    tm_msg("P bb p%p b%p\n", (void*) p, (void*) b);
     // tm_stop();
   }
 
@@ -1312,57 +1327,55 @@ void tm_validate_lists()
   tm_assert(n[tm_TOTAL] == tm.n[tm_TOTAL]);
 }
 
-static void tm_print_utilization(const char *name, tm_type *t, size_t *n)
+static void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size_t *sum)
 {
   int j;
 
   tm_msg(name);
 
-  switch ( tm.phase ) {
-  case tm_ALLOC:
-    n[tm_M] = 0;
-    n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
-    break;
-
-  case tm_ROOT:
-    n[tm_M] = 0;
-    n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
-    break;
-
-  case tm_MARK:
-    n[tm_M] = 0;
-    n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
-    break;
-
-  case tm_SWEEP:
-    n[tm_M] = 0;
-    n[tm_D] = n[tm_GREY] + n[tm_BLACK];
-    break;
-
-  case tm_UNMARK:
-    n[tm_M] = 0;
-    n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
-    break;
-
-  default:
-    tm_abort();
+  /* Compute total number of nodes in use. */
+  if ( nn > tm_NU ) {
+    switch ( tm.phase ) {
+    case tm_ALLOC:
+    case tm_ROOT:
+    case tm_MARK:
+    case tm_UNMARK:
+      n[tm_NU] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
+      break;
+      
+    case tm_SWEEP:
+      n[tm_NU] = n[tm_GREY] + n[tm_BLACK];
+      break;
+      
+    default:
+      tm_abort();
+    }
+    if ( sum && sum != n )
+      sum[tm_NU] += n[tm_NU];
   }
 
-  /* Definitely used. */
-  n[tm_PD] = n[tm_TOTAL] ? n[tm_D] * 100 / n[tm_TOTAL] : 0;
+  /* Compute total number of bytes in use. */
 
-  /* Maybe used. */
-  n[tm_PM] = n[tm_TOTAL] ? n[tm_M] * 100 / n[tm_TOTAL] : 0;
+  if ( sum != n ) {
+    if ( nn > tm_b ) {
+      n[tm_b] = t ? n[tm_NU] * t->size : 0;
+      if ( sum )
+	sum[tm_b] += n[tm_b];
+    }
 
-  if ( t ) {
-    size_t blocks_size = t->n[tm_B] * tm_block_SIZE;
-    size_t nodes_size = n[tm_D] * t->size;
-
-    n[tm_W] = blocks_size - nodes_size;
-    n[tm_PW] = blocks_size ? n[tm_W] * 100 / blocks_size : 0;
+    /* Compute avg. bytes / node. */
+    if ( nn > tm_b_NU ) {
+      n[tm_b_NU] = n[tm_NU] ? n[tm_b] / n[tm_NU] : 0;
+      if ( sum )
+	sum[tm_b_NU] = sum[tm_NU] ? sum[tm_b] / sum[tm_NU] : 0;
+    }
   }
 
-  for ( j = 0; j < sizeof(n)/sizeof(n[0]); j ++ ) {
+  /* Print fields. */
+  for ( j = 0; j < nn; j ++ ) {
+    if ( sum && sum != n && j <= tm_B ) {
+      sum[j] += n[j];
+    }
     tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) n[j]);
   }
 
@@ -1372,22 +1385,26 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n)
 void tm_print_stats()
 {
   tm_type *t;
+  size_t sum[tm__LAST2];
+
+  memset(sum, 0, sizeof(sum));
 
   _tm_msg_enable_table['X'] ++;
 
-  tm_msg("X t tb%lu[%lu]: \n",
+  tm_msg("X { t tb%lu[%lu]\n",
 	 tm.n[tm_B],
 	 tm.n[tm_B] * tm_block_SIZE
 	 );
 
-  tm_print_utilization("X ", 0, tm.n);
-
   tm_list_LOOP(&tm.types, t);
   {
     tm_msg("X t%p S%-6lu\n", (void*) t, (unsigned long) t->size, (unsigned) t->n[tm_B]);
-    tm_print_utilization("X ", t, t->n);
+    tm_print_utilization("X   ", t, t->n, sizeof(t->n)/sizeof(t->n[0]), sum);
   }
   tm_list_LOOP_END;
+
+  tm_print_utilization("X S ", 0, sum, sizeof(sum)/sizeof(sum[0]), sum);
+
   tm_msg("X }\n");
 
   _tm_msg_enable_table['X'] --;
@@ -1403,7 +1420,7 @@ void tm_print_block_stats()
 
   _tm_msg_enable_table['X'] ++;
 
-  tm_msg("X b tb%lu[%lu] \n",
+  tm_msg("X { b tb%lu[%lu]\n",
 	 tm.n[tm_B],
 	 tm.n[tm_B] * tm_block_SIZE
 	 );
@@ -1418,7 +1435,7 @@ void tm_print_block_stats()
 
       tm_block_validate(b);
 
-      tm_msg("X bl%p s%lu ", (void*) b, (unsigned long) b->size);
+      tm_msg("X b%p s%lu ", (void*) b, (unsigned long) b->size);
 
       for ( j = 0; j < sizeof(b->n)/sizeof(b->n[0]); j ++ ) {
 	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[j]);
@@ -1718,6 +1735,8 @@ static __inline void tm_node_sweep(tm_node *n, tm_block *b)
 
   /* Put it on the WHITE (free) list. */
   tm_node_set_color(n, b, tm_WHITE);
+  
+  tm_msg("s n%p\n", n);
 }
 
 static long tm_node_sweep_some(long left)
@@ -1861,7 +1880,7 @@ static int tm_block_sweep_some()
   } while ( left -- > 0 );
 
   if ( count ) 
-    tm_msg("b s bl%lu b%lu\n", (unsigned long) count, (unsigned long) bytes);
+    tm_msg("b s b%lu b%lu\n", (unsigned long) count, (unsigned long) bytes);
 
   return count;
 }
@@ -1963,13 +1982,13 @@ static void __tm_write_root_ignore(void **ptrp)
 static void __tm_write_root_root(void **ptrp)
 {
   tm_mark(*ptrp);
-  tm_msg("w r %p\n", *ptrp);
+  tm_msg("w r p%p\n", *ptrp);
 }
 
 static void __tm_write_root_mark(void **ptrp)
 {
   tm_mark(*ptrp);
-  tm_msg("w r %p\n", *ptrp);
+  tm_msg("w r p%p\n", *ptrp);
 }
 
 static void __tm_write_root_sweep(void **ptrp)
@@ -1978,7 +1997,7 @@ static void __tm_write_root_sweep(void **ptrp)
   ** Force allocater back to ROOT phase.
   */
   tm.global_mutations ++;
-  tm_msg("w r %p\n", *ptrp);
+  tm_msg("w r p%p\n", *ptrp);
 }
 
 
@@ -2004,7 +2023,7 @@ static __inline void tm_write_barrier_node(tm_node *n)
     ** Reschedule it to be remarked.
     */
     tm_node_set_color(n, tm_node_to_block(n), tm_GREY);
-    tm_msg("w b %p\n", n);
+    tm_msg("w b n%p\n", n);
     break;
 
   default:
@@ -2045,7 +2064,7 @@ static void __tm_write_barrier_root(void *ptr)
   ** Mark the root as being mutated.
   */
   tm.global_mutations ++;
-  tm_msg("w r %p\n", ptr);
+  tm_msg("w r p%p\n", ptr);
 
 }
 
@@ -2079,7 +2098,7 @@ static void __tm_write_barrier_mark(void *ptr)
     tm_write_barrier_node(n);
   } else {
     tm.global_mutations ++;
-    tm_msg("w r %p\n", ptr);
+    tm_msg("w r p%p\n", ptr);
   }
 }
 
@@ -2113,7 +2132,7 @@ static void __tm_write_barrier_sweep(void *ptr)
     tm_write_barrier_node(n);
   } else {
     tm.global_mutations ++;
-    tm_msg("w r %p\n", ptr);
+    tm_msg("w r p%p\n", ptr);
   }
 }
 
@@ -2168,7 +2187,10 @@ static __inline void *tm_node_alloc_free(tm_type *t)
     /* Put it on the appropriate allocated list. */
     tm_node_set_color(n, tm_node_to_block(n), tm_phase_alloc[tm.phase]);
 
-    tm_msg("N a n%p\n", (void*) n);
+    tm_msg("N a n%p[%lu] t%p\n", 
+	   (void*) n, 
+	   (unsigned long) t->size,
+	   (void*) t);
 
     return ptr;
   } else {
@@ -2206,7 +2228,14 @@ void *tm_alloc_type_inner(tm_type *t)
   switch ( tm.phase ) {
   case tm_ALLOC:
     /* Keep allocating until out of free nodes. */
-    if ( ! t->n[tm_WHITE] ) {
+    /* Don't keep allocating if allocated > total * tm_GC_THRESHOLD. */
+#ifndef tm_GC_THRESHOLD
+#define tm_GC_THRESHOLD 3 / 4
+#endif
+    if ( (! t->n[tm_WHITE]) ||
+	 (t->n[tm_phase_alloc[tm.phase]] > t->n[tm_TOTAL] * tm_GC_THRESHOLD) ||
+	 (tm.n[tm_phase_alloc[tm.phase]] > tm.n[tm_TOTAL] * tm_GC_THRESHOLD)
+	 ) {
       tm.next_phase = tm_ROOT;
     }
     break;
@@ -2250,41 +2279,27 @@ void *tm_alloc_type_inner(tm_type *t)
     break;
     
   case tm_SWEEP:
-#if 0
-    /*
-    ** If there were some root mutations during sweep, 
-    ** go back to marking roots.
-    ** Rationale: A reference to a new node may have
-    ** been copied from the unmarked stack to a global root.
+    /* 
+    ** Don't bother remarking after root mutations
+    ** because all newly allocated objects are marked "in use" during SWEEP.
+    ** See tm_phase_alloc.
     */
-    if ( tm.stack_mutations ) {
-      tm_stack_mark();
-      tm_msg("R stack mutation during SWEEP, marking stack and going back to MARK phase.\n");
-      tm.next_phase = tm_MARK;
-      tm_phase_init(tm.next_phase);
-      goto mark;
-    } else
-    if ( tm.global_mutations ) {
-      tm_root_mark_all();
-      tm_msg("R global mutation during SWEEP, marking all roots and going back to MARK phase.\n");
-      tm.next_phase = tm_MARK;
-      tm_phase_init(tm.next_phase);
-      goto mark;
-    } else
-#else
-      /* 
-      ** Don't bother remarking after root mutations
-      ** because all newly allocated objects are marked "in use" during SWEEP.
-      ** See tm_phase_alloc.
-      */
-#endif
- {
 
-      /* Try to immediately sweep nodes for the type we want first. */
-      tm_node_sweep_some_for_type(t);
-      if ( ! tm_node_sweep_some(tm_node_sweep_some_size) ) {
-	tm.next_phase = tm_UNMARK;
+    /* If there are pending marks, do them now. 
+    ** Rational: the grey nodes may have new references in them.
+    */
+    if ( tm.n[tm_GREY] ) {
+      tm_node_mark_some(tm_node_mark_some_size);
+      if ( ! tm.n[tm_GREY] ) {
+      sweep:
+	/* Try to immediately sweep nodes for the type we want first. */
+	tm_node_sweep_some_for_type(t);
+	if ( ! tm_node_sweep_some(tm_node_sweep_some_size) ) {
+	  tm.next_phase = tm_UNMARK;
+	}
       }
+    } else {
+      goto sweep;
     }
     break;
     
@@ -2307,51 +2322,13 @@ void *tm_alloc_type_inner(tm_type *t)
   
   /* Take one from the free list. */
   if ( ! (ptr = tm_node_alloc_free(t)) ) {
-
-#if 0 
-    /*
-    ** If there are still no possibly free nodes,
-    ** then
-    **    allocate a new page for the type.
-    */
-    switch ( tm.phase ) {
-    case tm_SWEEP:
-      if ( t->n[tm_ECRU] ) {
-	tm_abort();
-	break;
-      }
-      /* FALL THROUGH */
-      
-    case tm_UNMARK:
-    case tm_ALLOC:
-    case tm_ROOT:
-    case tm_MARK:
-      tm_node_alloc_some(t, tm_node_alloc_some_size);
-      break;
-
-#if 0      
-    case tm_MARK:
-      /* There's probably no garbage. */
-      if ( tm_alloc_pass > 100 || t->n[tm_ECRU] < t->n[tm_TOTAL] / 2) {
-	tm_node_alloc_some(t, tm_node_alloc_some_size);
-      } else {
-	goto try_again;
-      }
-      break;
-#endif
-
-    default:
-      tm_fatal();
-      break;
-    }
-#else
+    /* We must attempt to allocate from os. */
     tm_node_alloc_some(t, tm_node_alloc_some_size);
-#endif
-      
     ptr = tm_node_alloc_free(t);
     tm_assert_test(ptr);
   }
   
+
   /* Switch to new phase. */
   if ( tm.next_phase >= 0 )
     tm_phase_init(tm.next_phase);

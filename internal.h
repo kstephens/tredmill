@@ -1,11 +1,12 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.4 1999-12-28 20:42:16 stephensk Exp $ */
+/* $Id: internal.h,v 1.5 1999-12-28 23:44:19 stephensk Exp $ */
 
 /****************************************************************************/
 
-#include <sys/times.h>
+#include "tm.h"
+#include <sys/time.h> /* struct timeval */
 #include <setjmp.h>
 #include "list.h"
 
@@ -19,24 +20,21 @@ typedef enum tm_color {
   tm_BLACK,        /* Marked. */
 
   /* Stats */
-  tm_TOTAL,
+  tm_TOTAL,        /* Total nodes. */
   tm__LAST,
 
   /* Type-level Stats. */
-  tm_B = tm__LAST, /* number of blocks */
-  tm_D,            /* number of definite blocks. */
-  tm_PD,           /* % D / B */
-  tm_M,            /* number of maybe blocks. */
-  tm_PM,           /* % P / B */
-  tm_W,            /* waste in bytes. */
-  tm_PW,           /* % W / B bytes. */
+  tm_B = tm__LAST, /* Total blocks. */
+  tm_NU,           /* Total nodes in use. */
+  tm_b,            /* Total bytes in use. */
+  tm_b_NU,         /* Avg bytes/node. */
   tm__LAST2,
 
   /* Aliases for internal structure coloring. */
   tm_FREE_BLOCK = tm_WHITE,
   tm_LIVE_BLOCK = tm_ECRU,
-  tm_FREE_TYPE = tm_GREY,
-  tm_LIVE_TYPE = tm_BLACK
+  tm_FREE_TYPE  = tm_GREY,
+  tm_LIVE_TYPE  = tm_BLACK
 
 } tm_color;
 
@@ -72,7 +70,7 @@ typedef struct tm_block {
   char *begin;          /* The beginning of the allocation space. */
   char *end;            /* The end of allocation space. */
   char *alloc;          /* The allocation pointer for new tm_nodes. */
-  unsigned short n[tm__LAST];   /* Total nodes for this block. */
+  size_t n[tm__LAST];   /* Total nodes for this block. */
 
   double alignment;     /* Force alignment to double. */
 
@@ -179,8 +177,8 @@ struct tm_data {
   /* Current tm_alloc() list change stats. */
   size_t alloc_n[tm__LAST2];
   
-  /* Current tm_alloc() timing. */
-  struct tms alloc_time;
+  /* tm_alloc() timing. */
+  struct timeval ts, td;
 
   /* Roots */
   struct {
