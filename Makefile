@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.5 1999-12-28 20:42:15 stephensk Exp $
+# $Id: Makefile,v 1.6 2000-01-07 09:38:29 stephensk Exp $
 
 INCLS += ..
 
@@ -24,6 +24,10 @@ include $(MAKS)/lib.mak
 TOOL_NAME:=tmtest
 TOOL_LIBS:=tredmill
 TOOL_TEST:=YES
+include $(MAKS)/tool.mak
+
+TOOL_NAME:=wb
+#TOOL_LIBS:=tredmill
 include $(MAKS)/tool.mak
 
 #################################################################

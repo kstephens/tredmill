@@ -1,10 +1,13 @@
-/* $Id: user.c,v 1.5 1999-12-29 02:52:32 stephensk Exp $ */
+/* $Id: user.c,v 1.6 2000-01-07 09:38:31 stephensk Exp $ */
 
 #include "tm.h"
 #include "internal.h"
 
 #define tv_fmt "%lu.%06lu"
 #define tv_fmt_args(V) (unsigned long) (V).tv_sec, (unsigned long) (V).tv_usec
+
+int _tm_user_bss[4];
+int _tm_user_data[4] = { 0, 1, 2, 3 };
 
 /***************************************************************************/
 
@@ -47,32 +50,44 @@ static __inline void tv_sum(tv *sum, tv *dt, tv *t0, tv *t1, tv *mt)
 
 }
 
+void tm_time_stat_begin(tm_time_stat *ts)
+{
+  gettimeofday(&ts->t0, 0);
+}
+
+void tm_time_stat_end(tm_time_stat *ts, const char *name)
+{
+  ts->name = name;
+  ts->count ++;
+  gettimeofday(&ts->t1, 0);
+  tv_sum(&ts->ts, &ts->td, &ts->t0, &ts->t1, &ts->tw);
+  tm_msg("T %s"
+	 " dt" tv_fmt 
+	 " st" tv_fmt 
+	 " \n",
+	 name, 
+	 tv_fmt_args(ts->td),
+	 tv_fmt_args(ts->ts)
+	 );
+}
+
 void *tm_alloc(size_t size)
 {
-  tv t0, t1;
   void *ptr = 0;
 
   if ( size == 0 )
     return 0;
 
-#if 1
-  gettimeofday(&t0, 0);
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_alloc);
 #endif
 
   tm_clear_some_stack_words();
   tm_set_stack_ptr(&ptr);
   ptr = tm_alloc_inner(size);
 
-#if 1
-  gettimeofday(&t1, 0);
-  tv_sum(&tm.ts, &tm.td, &t0, &t1, &tm.tw);
-  tm_msg("T A"
-	 " dt" tv_fmt 
-	 " st" tv_fmt 
-	 " \n",
-	 tv_fmt_args(tm.td),
-	 tv_fmt_args(tm.ts)
-	 );
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_alloc, "A");
 #endif
 
   return ptr;
@@ -86,27 +101,16 @@ void *tm_alloc_desc(tm_adesc *desc)
   if ( desc == 0 || desc->size == 0 )
     return 0;
 
-#if 0
-  memset(&tm.alloc_time, 0, sizeof(tm.alloc_time));
-  times(&tm.alloc_time);
-  tm_msg("Times before: %lu %lu %lu %lu\n", 
-	 tm.alloc_time.tms_utime,
-	 tm.alloc_time.tms_stime,
-	 tm.alloc_time.tms_cutime,
-	 tm.alloc_time.tms_cstime);
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_alloc);
 #endif
 
   tm_clear_some_stack_words();
   tm_set_stack_ptr(&ptr);
   ptr = tm_alloc_desc_inner(desc);
 
-#if 0
-  times(&tm.alloc_time);
-  tm_msg("Times after: %lu %lu %lu %lu\n", 
-	 tm.alloc_time.tms_utime,
-	 tm.alloc_time.tms_stime,
-	 tm.alloc_time.tms_cutime,
-	 tm.alloc_time.tms_cstime);
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_alloc, "A");
 #endif
 
   return ptr;
@@ -126,27 +130,16 @@ void *tm_realloc(void *oldptr, size_t size)
     return 0;
   }
 
-#if 0
-  memset(&tm.alloc_time, 0, sizeof(tm.alloc_time));
-  times(&tm.alloc_time);
-  tm_msg("Times before: %lu %lu %lu %lu\n", 
-	 tm.alloc_time.tms_utime,
-	 tm.alloc_time.tms_stime,
-	 tm.alloc_time.tms_cutime,
-	 tm.alloc_time.tms_cstime);
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_alloc);
 #endif
 
   tm_clear_some_stack_words();
   tm_set_stack_ptr(&ptr);
   ptr = tm_realloc_inner(oldptr, size);
 
-#if 0
-  times(&tm.alloc_time);
-  tm_msg("Times after: %lu %lu %lu %lu\n", 
-	 tm.alloc_time.tms_utime,
-	 tm.alloc_time.tms_stime,
-	 tm.alloc_time.tms_cutime,
-	 tm.alloc_time.tms_cstime);
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_alloc, "R");
 #endif
 
   return ptr;
@@ -156,9 +149,17 @@ void tm_gc_full()
 {
   void *ptr = 0;
 
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_gc);
+#endif
+
   tm_clear_some_stack_words();
   tm_set_stack_ptr(&ptr);
   tm_gc_full_inner();
+
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_gc, "GC");
+#endif
 }
 
 /***************************************************************************/

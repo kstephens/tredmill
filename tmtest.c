@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.7 1999-12-29 02:52:31 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.8 2000-01-07 09:38:31 stephensk Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -24,7 +24,44 @@ static const char *_run_name = "<UNKNOWN>";
 #define my_gc_full() tm_gc_full()
 #define my_print_stats() tm_print_stats(); tm_print_block_stats()
 
-#define SWEEP_IS_ERROR 0
+#define SWEEP_IS_ERROR 1
+
+static int my_alloc_id = 1;
+static void *my_alloc(size_t size)
+{
+  void *ptr;
+
+  ptr = tm_alloc(size);
+
+  my_alloc_id = tm_alloc_id;
+
+#if 0
+  if ( tm_sweep_is_error ) {
+    tm_gc_full();
+  }
+#endif
+
+  {
+    static unsigned long mc = 0;
+    mc ++;
+#if 0
+    if ( mc % (nalloc / 2) == 0 ) {
+      tm_msg(_run_sep);
+      tm_msg1("* %s allocation check \n", _run_name);
+      my_print_stats();
+      my_prompt();
+    }
+#endif
+
+#if 0 
+    if ( mc == 20 )
+      abort();
+#endif
+  }
+
+  return ptr;
+}
+
 
 static void _run_test(const char *name, void (*func)())
 {
@@ -32,12 +69,14 @@ static void _run_test(const char *name, void (*func)())
   _run_name = name;
   tm_msg(_run_sep);
   tm_msg("* %s\n", _run_name);
+  tm_msg(" my_alloc_id = %d\n", my_alloc_id);
 
   func();
   my_prompt();
 
   tm_msg(_run_sep);
   tm_msg("* %s END\n", _run_name);
+  tm_msg(" my_alloc_id = %d\n", my_alloc_id);
   my_gc_full();
   my_print_stats();
 
@@ -69,33 +108,6 @@ static void _end_test()
 
 #define run_test(X) _run_test(#X, &X)
 #define end_test() _end_test()
-
-static void *my_alloc(size_t size)
-{
-  void *ptr;
-
-  ptr = tm_alloc(size);
-
-  {
-    static unsigned long mc = 0;
-    mc ++;
-#if 0
-    if ( mc % (nalloc / 2) == 0 ) {
-      tm_msg(_run_sep);
-      tm_msg1("* %s allocation check \n", _run_name);
-      my_print_stats();
-      my_prompt();
-    }
-#endif
-
-#if 0 
-    if ( mc == 20 )
-      abort();
-#endif
-  }
-
-  return ptr;
-}
 
 static void test1()
 {
@@ -146,7 +158,7 @@ static void test3()
     assert(roots[i] == 0);
 
     /* A pow of two */
-    roots[i] = tm_alloc(size);
+    roots[i] = my_alloc(size);
     /* Move ptr to end-of-node */
     roots[i] += size;
   }
@@ -209,7 +221,7 @@ static void *my_int(int i)
   return (void*) (i << 2) + 1;
 }
 
-static void *my_cons_(void *a, void *d, int nsize)
+static void *my_cons_(void *d, int nsize)
 {
   my_cons *c;
   int size;
@@ -220,7 +232,7 @@ static void *my_cons_(void *a, void *d, int nsize)
     size = sizeof(*c);
   }
   c = my_alloc(size);
-  c->car = a;
+  c->car = my_int(my_alloc_id);
   c->cdr = d;
   c->visited = 0;
   tm_write_barrier_pure(c);
@@ -237,7 +249,7 @@ static void test4()
   tm_sweep_is_error = SWEEP_IS_ERROR;
 
   for ( i = 0; i < nalloc; i ++ ) {
-    my_cons *c = my_cons_(my_int(i), root, nsize);
+    my_cons *c = my_cons_(root, nsize);
     root = c;
     // print_my_cons_list(root);
   }
@@ -258,7 +270,7 @@ static void test5()
   int i;
 
   for ( i = 0; i < nalloc; i ++ ) {
-    my_cons *c = my_cons_(my_int(i), test5_root, nsize);
+    my_cons *c = my_cons_(test5_root, nsize);
     if ( (i & 3) == 0 ) 
       test5_root = c;
     // print_my_cons_list(root);
@@ -271,6 +283,7 @@ static void test5()
   print_my_cons_list("test5", test5_root);
 
   test5_root = 0;
+  tm_gc_full();
 }
 
 static void test6()
@@ -280,12 +293,12 @@ static void test6()
   my_cons **rp = &root;
 
   tm_gc_full();
-  print_my_cons_list("test6", test5_root);
 
   tm_sweep_is_error = SWEEP_IS_ERROR;
 
+  tm_msg_enable("w");
   for ( i = 0; i < nalloc; i ++ ) {
-    my_cons *c = my_cons_(my_int(i), 0, nsize);
+    my_cons *c = my_cons_(0, nsize);
     *rp = c;
     tm_write_barrier(*rp);
     rp = &(c->cdr);
@@ -308,7 +321,7 @@ static void test7()
 
   memset(roots, 0, sizeof(roots));
   for ( i = 0; i < nalloc; i ++ ) {
-    my_cons *c = my_cons_(my_int(i), root, nsize);
+    my_cons *c = my_cons_(root, nsize);
 
     root = c;
 
@@ -320,7 +333,7 @@ static void test7()
 	tm_write_barrier_pure(*p);
       } else {
 	*p = c;
-	tm_write_root((void**) p);
+	tm_write_barrier(*p);
       }
     }
   }
@@ -340,7 +353,7 @@ static void test8()
   memset(roots, 0, sizeof(roots));
   do { 
     for ( i = 0; i < nalloc; i ++ ) {
-      my_cons *c = my_cons_(my_int(i), 0, nsize);
+      my_cons *c = my_cons_(0, nsize);
       
       root = c;
       
@@ -356,7 +369,7 @@ static void test8()
 
 	/* Put on root list. */
 	*p = c;
-	tm_write_root((void**) p);
+	tm_write_barrier(p);
       }
     }
 

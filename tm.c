@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.8 1999-12-29 02:52:31 stephensk Exp $ */
+/* $Id: tm.c,v 1.9 2000-01-07 09:38:30 stephensk Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -33,11 +33,11 @@ int tm_sweeping = 0;
 FILE *tm_msg_file = 0;
 const char *tm_msg_prefix = "";
 
-static const char *_tm_msg_enable = 
+static const char *tm_msg_enable_default = 
 // "sNpwtFWVAg*r"
 // "gFWA"
 //  "gTFWA"
- "gTFWA"
+ "RgTFWA"
 ;
 
 int tm_msg_enable_all = 0;
@@ -168,7 +168,7 @@ struct tm_data tm;
 /****************************************************************************/
 /* Debugging. */
 
-static unsigned long tm_alloc_id = 0;
+unsigned long tm_alloc_id = 0;
 static unsigned long tm_alloc_pass = 0;
 
 static char _tm_msg_enable_table[256];
@@ -204,6 +204,7 @@ void tm_msg(const char *format, ...)
   vfprintf(tm_msg_file, format, vap);
   va_end(vap);
 
+  fflush(tm_msg_file);
   // fgetc(stdin);
 }
 
@@ -221,6 +222,8 @@ void tm_msg1(const char *format, ...)
   va_start(vap, format);
   vfprintf(tm_msg_file, format, vap);
   va_end(vap);
+
+  fflush(tm_msg_file);
 }
 
 /****************************************************************************/
@@ -245,7 +248,7 @@ void tm_abort()
 
   in_abort ++;
 
-  if ( in_abort == 1 ) {
+  if ( in_abort == 1 && tm.inited ) {
     tm_print_stats();
   }
 
@@ -254,59 +257,251 @@ void tm_abort()
   tm_fatal();
 }
 
+
+/**************************************************************************/
+/* assertions, warnings. */
+
 void _tm_assert(const char *expr, const char *file, int lineno)
 {
   tm_msg("\n");
-  tm_msg("Fatal assertion \"%s\" failed %s:%d \n", expr, file, lineno);
-
-  tm_abort();
+  tm_msg("Fatal assertion \"%s\" failed %s:%d ", expr, file, lineno);
 }
-#define tm_assert_(X,S) do { if ( ! (X) ) {_tm_assert(#S, __FILE__, __LINE__);} } while(0)
-#define tm_assert(X)tm_assert_(X,#X)
-#define tm_assert_test(X)tm_assert_(X,#X)
+
+#define tm_assert(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
+
+#define tm_assert_test(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
+
 #define tm_warn(X,Y...) ((X) ? 0 : (tm_msg1("\n"), tm_msg("WARNING assertion \"%s\" failed %s:%d ", #X, __FILE__, __LINE__), tm_msg1("" Y), tm_msg1("\n"), tm_stop(), 1))
 
 
 /****************************************************************************/
 /* Init. */
 
-static void _tm_add_root(const char *name, const void *l, const void *h)
+
+/****************************************************************************/
+/* Root sets. */
+
+static int _tm_root_add_1(tm_root *a)
 {
-  if ( l >= h )
-    return;
+  int i;
+#define MAX_ROOTS (sizeof(tm.roots)/sizeof(tm.roots[0]))
 
-  tm_assert(tm.nroots < sizeof(tm.roots)/sizeof(tm.roots[0]));
+  if ( a->l >= a->h )
+    return -1;
 
-  tm.roots[tm.nroots].name = name;
-  tm.roots[tm.nroots].l = l;
-  tm.roots[tm.nroots].h = h;
-  tm_msg("R a [%p,%p] %d %s\n", 
-	 tm.roots[tm.nroots].l, 
-	 tm.roots[tm.nroots].h,
-	 tm.nroots, 
-	 tm.roots[tm.nroots].name);
-  tm.nroots ++;
+  /* Scan for empty slot. */
+  for ( i = 0; i < MAX_ROOTS; ++ i ) {
+    if ( tm.roots[i].name == 0 || tm.roots[i].l == tm.roots[i].h ) {
+      break;
+    }
+  }
+
+  if ( tm.nroots <= i ) {
+    tm.nroots = i + 1;
+  }
+
+  tm_assert(i < MAX_ROOTS);
+  tm_assert(i >= tm.root_datai);
+
+  if ( tm.root_newi == -1 ) {
+    tm.root_newi = i;
+  }
+
+  tm.roots[i] = *a;
+
+  tm_msg("R a [%p,%p] %s %d\n", 
+	 tm.roots[i].l, 
+	 tm.roots[i].h,
+	 tm.roots[i].name,
+	 i);
+
+  return i;
+}
+#undef MAX_ROOTS
+
+static int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
+{
+  const void *tmp;
+
+  if ( a->l > a->h ) {
+    tmp = a->l; a->l = a->h; a->h = tmp;
+  }
+  if ( b->l > b->h ) {
+    tmp = b->l; b->l = b->h; b->h = tmp;
+  }
+  if ( b->l == b->h ) {
+    return 0;
+  }
+
+  if ( (a->l == b->l) || (b->l <= a->l && a->h <= b->h) ) {
+    /*
+     * a   L-------------------------------------------H
+     * b      L--------------------H
+     * c   0
+     */
+
+    /* b in a */
+    return -1; /* Delete flag */
+  }
+  if ( b->h <= a->l || b->l >= a->h ) {
+    /*
+     * a   L-------------H                        L--------------H
+     * b                   L--------------------H
+     * c   0
+     */
+    /* b out a */
+    /* *c = *a; */
+    return 0;
+  }
+  if ( a->l <= b->l && b->h <= a->h ) {
+    /*
+     * a            L------H
+     * b   H-----------------------H
+     * c1                  L-------H
+     * c2  L--------H
+     */
+    /* b is in a */
+    c[0] = *a;
+    c[0].l = b->h;
+    c[1] = *a;
+    c[1].h = b->l;
+    return 2;
+  }
+  if ( a->l < b->h && b->h <= a->h ) {
+    /*
+     * a          L---------------------H
+     * b    L--------------------H
+     * c                         L------H
+     */
+    /* b.h in a */
+    *c = *a;
+    c->l = b->h;
+    return 1;
+  }
+  if ( a->l < b->l && b->l <= a->h ) {
+    /*
+     * a   L---------------------H
+     * b             L--------------------H
+     * c   L---------H
+     */
+    /* b.l in a */
+    *c = *a;
+    c->h = b->l;
+    return 1;
+  }
+
+  tm_abort();
+  return -1;
 }
 
-static void tm_add_root(const char *name, const void *_l, const void *_h)
+static void _tm_root_add(tm_root *a)
 {
-  const void *l = _l, *h = _h;
-  const void *tm_l, *tm_h;
+  int i;
+  tm_root c[2];
 
-  /* Adjust range to avoid internal tm data. */
-  tm_l = &tm;
-  tm_h = (&tm) + 1;
-
-  if ( l <= tm_l && tm_l < h ) {
-    _tm_add_root(name, l, tm_l);
-    l = tm_h;
+  /* Scan anti-roots for possible splitting */
+  for ( i = 0; i < tm.naroots; ++ i ) {
+    switch ( tm_root_subtract(a, &tm.aroots[i], c) ) {
+    case -1: /* deleted */
+      return;
+      break;
+      
+    case 0: /* OK */
+      break;
+      
+    case 1: /* clipped */
+      *a = c[0];
+      break;
+      
+    case 2: /* split */
+      _tm_root_add(&c[0]);
+      *a = c[1];
+      break;
+    }
   }
-  if ( l <= tm_l && tm_l < h ) {
-    _tm_add_root(name, tm_h, h);
-    l = h;
+
+  _tm_root_add_1(a);
+}
+
+int tm_root_add(const char *name, const void *l, const void *h)
+{
+  tm_root a;
+
+  a.name = name;
+  a.l = l;
+  a.h = h;
+
+  tm.root_newi = -1;
+
+  tm_msg("R A [%p,%p] %s PRE\n", 
+	 a.l, 
+	 a.h,
+	 a.name);
+
+  _tm_root_add(&a);
+
+  return tm.root_newi;
+}
+
+
+void tm_root_remove(const char * name, const void *l, const void *h)
+{
+  int i;
+  tm_root *a, *b, c[2];
+
+  /* Add to anti-roots list. */
+  b = &tm.aroots[i = tm.naroots ++];
+  b->name = name;
+  b->l = l;
+  b->h = h;
+
+  tm_msg("R A [%p,%p] %s ANTI-ROOT %d\n", 
+	 tm.aroots[i].l, 
+	 tm.aroots[i].h,
+	 tm.aroots[i].name,
+	 i);
+
+  /* Adding a anti-root might require splitting existing roots. */
+  /* Do not split tm.root[0], it's the machine register set! */
+
+  for ( i = tm.root_datai; i < tm.nroots; ++ i ) {
+    int j;
+     
+    for ( j = 0; j < tm.naroots; ++ j ) {
+      a = &tm.roots[i];
+      b = &tm.aroots[j];
+      
+      switch ( tm_root_subtract(a, b, c) ) {
+      case -1: /* deleted */
+	a->l = a->h = 0;
+	j = tm.naroots;
+	break;
+	
+      case 1: /* clipped */
+	*a = *c;
+	break;
+	
+      case 2: /* split */
+	*a = *c;
+	_tm_root_add(&c[1]);
+	i = 1; j = -1; /* restart */
+	break;
+      }
+    }
+  }
+}
+
+
+int tm_ptr_is_in_root_set(const void *ptr)
+{
+  int i;
+
+  for ( i = 0; i < tm.nroots; ++ i ) {
+    if ( tm.roots[i].l <= ptr && ptr < tm.roots[i].h )
+      return i + 1;
   }
 
-  _tm_add_root(name, l, h);
+  return 0;
 }
 
 
@@ -336,7 +531,7 @@ void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_pure_ignore;
 
 static void tm_root_loop_init()
 {
-  tm.rooti = 2;
+  tm.rooti = tm.root_datai;
   tm.rp = tm.roots[tm.rooti].l;
   tm.global_mutations = tm.stack_mutations = 0;
 }
@@ -440,29 +635,38 @@ static __inline void tm_block_sweep_init()
 
 
 
+void tm_msg_enable(const char *codes)
+{
+  const unsigned char *r;
+  
+  for ( r = codes; *r; r ++ ) {
+    if ( *r == '\1' ) {
+      memset(_tm_msg_enable_table, 1, sizeof(_tm_msg_enable_table));
+      break;
+    } else {
+      _tm_msg_enable_table[*r] = 1;
+    }
+  }
+}
+
 void tm_init(int *argcp, char ***argvp, char ***envpp)
 {
   int i;
+
+  if ( tm.inited ) {
+    tm_msg("\nWARNING: tm_init() called more than once.");
+  }
 
   /* Msg ignore table. */
   if ( tm_msg_enable_all ) {
     memset(_tm_msg_enable_table, 1, sizeof(_tm_msg_enable_table));
   } else
   {
-    const unsigned char *r;
-
-    for ( r = _tm_msg_enable; *r; r ++ ) {
-      if ( *r == '\1' ) {
-	memset(_tm_msg_enable_table, 1, sizeof(_tm_msg_enable_table));
-      } else {
-	_tm_msg_enable_table[*r] = 1;
-      }
-    }
+    tm_msg_enable(tm_msg_enable_default);
     _tm_msg_enable_table[' '] = 1;
     _tm_msg_enable_table['\t'] = 1;
     _tm_msg_enable_table['\n'] = 1;
     _tm_msg_enable_table['\r'] = 1;
-
   }
 
 #if 1
@@ -483,37 +687,97 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm.nroots = 0;
   tm.global_mutations = tm.stack_mutations = 0;
 
-  _tm_add_root("register", tm.jb, (&tm.jb) + 1);
+  tm.root_datai = -1;
 
-  _tm_add_root("stack", &i, envpp);
-  /* IMPLEMENT: Support for multithreading stacks. */
+  tm_root_add("register", &tm.jb, (&tm.jb) + 1);
+
+  /* Roots: stack */
+  {
+    void *l = &i;    /* top of stack */
+    void *h = envpp; /* bottom of stack */
+
+    /* Determine direction of stack growth. */
+    if ( l < h ) {
+      tm.stack_grows = -1;
+    } else {
+      void *t = l;
+      l = h;
+      h = t;
+      tm.stack_grows = 1;
+    }
+    
+    /* Attempt to nudge to page boundaries. */
+    l = (void*) ((unsigned long) (l) - ((unsigned long) (l) % tm_PAGESIZE));
+    h = (void*) ((unsigned long) (h) + (tm_PAGESIZE - ((unsigned long) (h) % tm_PAGESIZE)));
+
+    i = tm_root_add("stack", l, h);
+
+    /* Remember where to put the stack pointer. */
+    if ( tm.stack_grows < 0 ) {
+      tm.stack_ptrp = (void**) &tm.roots[i].l;
+    } else {
+      tm.stack_ptrp = (void**) &tm.roots[i].h;
+    }
+
+    tm.root_datai = i + 1;
+
+    /* IMPLEMENT: Support for multithreading stacks. */
+  }
+
+
+  tm_root_remove("tm", &tm, &tm + 1);
 
 #ifdef __win32__
   {
     extern int _data_start__, _data_end__, _bss_start__, _bss_end__;
 
-    tm_add_root("initialized data", &_data_start__, &_data_end__);
-    tm_add_root("uninitialized data", &_bss_start__, &_bss_end__);
+    tm_root_add("initialized data", &_data_start__, &_data_end__);
+    tm_root_add("uninitialized data", &_bss_start__, &_bss_end__);
 
   }
-#define tm_get_roots
+#define tm_roots_init
 #endif
 
 #ifdef __linux__
   {
-    extern int __bss_start, _end;
+    extern int __data_start, __bss_start, _end;
 
-    tm_add_root("data", &__bss_start, &_end);
+    tm_assert(&__data_start < &__bss_start && &__bss_start < &_end);
+    tm_root_add("initialized data", &__data_start, &__bss_start);
+    tm_root_add("uninitialized data", &__bss_start, &_end);
   }
-#define tm_get_roots
+#define tm_roots_init
 #endif
 
-#ifndef tm_get_roots
+#ifndef tm_roots_init
 #error must specify how to find the data segment(s) for root marking.
 #endif
 
 
   /* IMPLEMENT: Support dynamically-loaded libraries data segments. */
+
+  /* Validate root sets. */
+  {
+    extern int _tm_user_bss[], _tm_user_data[];
+
+    tm_assert(tm_ptr_is_in_root_set(_tm_user_bss), ": _tm_user_bss = %p", _tm_user_bss);
+    tm_assert(tm_ptr_is_in_root_set(_tm_user_data), ": _tm_user_data = %p", _tm_user_data);
+    tm_set_stack_ptr(&i);
+    tm_assert(tm_ptr_is_in_root_set(&i));
+  }
+
+  tm_msg("R ROOTS {\n");
+  for ( i = 0; tm.roots[i].name; ++ i ) {
+    if ( tm.roots[i].l != tm.roots[i].h ) {
+      tm_msg("R \t [%p,%p] %s %d\n",
+	     tm.roots[i].l,
+	     tm.roots[i].h,
+	     tm.roots[i].name,
+	     i);
+    }
+  }
+  tm_msg("R }\n");
+
 
   /* Root marking. */
   tm_root_loop_init();
@@ -543,6 +807,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   /* Start by allocating. */
   tm_phase_init(tm_ALLOC);
+
+  tm.inited ++;
 }
 
 /***************************************************************************/
@@ -1443,12 +1709,12 @@ void tm_print_stats()
 
   tm_list_LOOP(&tm.types, t);
   {
-    tm_msg("X t%p S%-6lu\n", (void*) t, (unsigned long) t->size, (unsigned) t->n[tm_B]);
-    tm_print_utilization("X   ", t, t->n, sizeof(t->n)/sizeof(t->n[0]), sum);
+    tm_msg("X  t%p S%-6lu\n", (void*) t, (unsigned long) t->size, (unsigned) t->n[tm_B]);
+    tm_print_utilization("X    ", t, t->n, sizeof(t->n)/sizeof(t->n[0]), sum);
   }
   tm_list_LOOP_END;
 
-  tm_print_utilization("X S ", 0, sum, sizeof(sum)/sizeof(sum[0]), sum);
+  tm_print_utilization("X  S ", 0, sum, sizeof(sum)/sizeof(sum[0]), sum);
 
   tm_msg("X }\n");
 
@@ -1472,7 +1738,7 @@ void tm_print_block_stats()
 
   tm_list_LOOP(&tm.types, t);
   {
-    tm_msg("X t%p s%lu \n", t, (unsigned long) t->size);
+    tm_msg("X   t%p s%lu \n", t, (unsigned long) t->size);
     
     tm_list_LOOP(&t->blocks, b);
     {
@@ -1480,7 +1746,7 @@ void tm_print_block_stats()
 
       tm_block_validate(b);
 
-      tm_msg("X b%p s%lu ", (void*) b, (unsigned long) b->size);
+      tm_msg("X    b%p s%lu ", (void*) b, (unsigned long) b->size);
 
       for ( j = 0; j < sizeof(b->n)/sizeof(b->n[0]); j ++ ) {
 	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[j]);
@@ -1551,8 +1817,10 @@ static void tm_range_mark(const void *b, const void *e);
 
 static void tm_root_mark_id(int i)
 {
-  tm_msg("r [%p,%p] %s\n", tm.roots[i].l, tm.roots[i].h, tm.roots[i].name);
-  tm_range_mark(tm.roots[i].l, tm.roots[i].h);
+  if ( tm.roots[i].l < tm.roots[i].h ) {
+    tm_msg("r [%p,%p] %s\n", tm.roots[i].l, tm.roots[i].h, tm.roots[i].name);
+    tm_range_mark(tm.roots[i].l, tm.roots[i].h);
+  }
 }
 
 
@@ -1563,7 +1831,7 @@ static void tm_register_mark()
 
 void tm_set_stack_ptr(void *stackvar)
 {
-  tm.roots[1].l = (char*) stackvar - 64;
+  *tm.stack_ptrp = (char*) stackvar - 64;
 }
 
 static void tm_stack_mark()
@@ -1724,7 +1992,7 @@ static int tm_check_sweep_error()
 		 (unsigned long) t->size);
 	  {
 	    void ** vpa = tm_node_to_ptr(n);
-	    tm_msg("Fatal cons (%d, %p)\n", (int) vpa[0], vpa[1]);
+	    tm_msg("Fatal cons (%d, %p)\n", ((int) vpa[0]) >> 2, vpa[1]);
 	  }
 	}
 	tm_list_LOOP_END;
@@ -1762,7 +2030,7 @@ static int tm_check_sweep_error()
       tm_stop();
 
       /* Clear worst alloc time. */
-      memset(&tm.tw, 0, sizeof(tm.tw));
+      memset(&tm.ts_alloc.tw, 0, sizeof(tm.ts_alloc.tw));
 
       return 1;
     }
@@ -2024,23 +2292,27 @@ void tm_mark(void *ptr)
 
 static void __tm_write_root_ignore(void **ptrp)
 {
+  tm_abort();
   /* DO NOTHING */
 }
 
 static void __tm_write_root_root(void **ptrp)
 {
+  tm_abort();
   tm_mark(*ptrp);
   tm_msg("w r p%p\n", *ptrp);
 }
 
 static void __tm_write_root_mark(void **ptrp)
 {
+  tm_abort();
   tm_mark(*ptrp);
   tm_msg("w r p%p\n", *ptrp);
 }
 
 static void __tm_write_root_sweep(void **ptrp)
 {
+  tm_abort();
   /*
   ** Force allocater back to ROOT phase.
   */
@@ -2097,6 +2369,8 @@ static void __tm_write_barrier_root(void *ptr)
   ** the sweep phase.
   */
   if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
+    tm.stack_mutations ++; 
+    tm_msg("w s p%p\n", ptr);
     return;
   }
 
@@ -2113,7 +2387,6 @@ static void __tm_write_barrier_root(void *ptr)
   */
   tm.global_mutations ++;
   tm_msg("w r p%p\n", ptr);
-
 }
 
 static void __tm_write_barrier_mark(void *ptr)
@@ -2128,7 +2401,8 @@ static void __tm_write_barrier_mark(void *ptr)
   ** the sweep phase.
   */
   if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
-    tm.stack_mutations ++;
+    tm.stack_mutations ++; 
+    // tm_msg("w s p%p\n", ptr);
     return;
   }
 
@@ -2163,6 +2437,7 @@ static void __tm_write_barrier_sweep(void *ptr)
   */
   if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
     tm.stack_mutations ++;
+    // tm_msg("w s p%p\n", ptr);
     return;
   }
 
@@ -2259,6 +2534,9 @@ void *tm_alloc_type_inner(tm_type *t)
   void *ptr;
 
   tm_alloc_id ++;
+  if ( tm_alloc_id == 5040 )
+    tm_stop();
+
   tm_alloc_pass = 0;
   memset(tm.alloc_n, 0, sizeof(tm.alloc_n));
 
@@ -2266,7 +2544,7 @@ void *tm_alloc_type_inner(tm_type *t)
   
   // tm_validate_lists();
 
- try_again:
+  //try_again:
   tm_alloc_pass ++;
   switch ( tm.phase ) {
   case tm_ALLOC:
@@ -2291,7 +2569,7 @@ void *tm_alloc_type_inner(tm_type *t)
     break;
     
   case tm_MARK:
-  mark:
+    //mark:
     /* Mark a little bit. */
     if ( ! tm_node_mark_some(tm_node_mark_some_size) ) {
       /* 

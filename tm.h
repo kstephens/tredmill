@@ -16,6 +16,10 @@ tm_adesc *tm_adesc_for_size(tm_adesc *desc, int force_new);
 /* Initialization. */
 void tm_init(int *argcp, char ***argvp, char ***envpp);
 
+/* Roots */
+int  tm_root_add(const char *name, const void *begin, const void *end);
+void tm_root_remove(const char *name, const void *begin, const void *end);
+
 /* Allocation. */
 void *tm_alloc(size_t size);
 void *tm_alloc_desc(tm_adesc *desc);
@@ -59,5 +63,6 @@ extern long tm_node_scan_some_size;
 extern long tm_node_sweep_some_size;
 extern long tm_block_sweep_some_size;
 extern long tm_node_unmark_some_size;
+extern unsigned long tm_alloc_id;
 
 #endif

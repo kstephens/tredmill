@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.6 1999-12-29 02:52:30 stephensk Exp $ */
+/* $Id: internal.h,v 1.7 2000-01-07 09:38:30 stephensk Exp $ */
 
 /****************************************************************************/
 
@@ -10,7 +10,16 @@
 #include <setjmp.h>
 #include "list.h"
 
+#include <limits.h>
+#ifndef PAGESIZE
+#define PAGESIZE 4096
+#endif
+
 /****************************************************************************/
+
+#ifndef tm_TIME_STAT
+#define tm_TIME_STAT 1 /* Enable timing stats. */
+#endif
 
 typedef enum tm_color {
   /* Node colors */
@@ -119,11 +128,12 @@ enum tm_config {
   tm_node_HDR_SIZE = sizeof(tm_node),
   tm_block_HDR_SIZE = sizeof(tm_block),
 
-  tm_block_SIZE = 2 * 1024,
+  tm_PAGESIZE = PAGESIZE,
+  tm_block_SIZE = PAGESIZE,
 
   tm_block_SIZE_MAX = tm_block_SIZE - tm_block_HDR_SIZE,
 
-  tm_PTR_RANGE = 512 * 1024 * 1024, /* 512 meg */
+  tm_PTR_RANGE = 512 * 1024 * 1024, /* 512 Mb */
   tm_block_N_MAX = tm_PTR_RANGE / tm_block_SIZE,
 };
 
@@ -138,9 +148,29 @@ enum tm_phase {
   tm_UNMARK,    /* Ummarking marked roots, alloc free/os. (BLACK->ECRU) */
 };
 
+typedef struct tm_root {
+  const char *name;
+  const void *l, *h;
+} tm_root;
+
+typedef struct tm_time_stat {
+  const char *name;
+  struct timeval 
+    td, /* Last allocation time. */
+    ts, /* Total allocation time. */
+    tw, /* Worst allocation time. */
+    t0, t1;
+  unsigned int count;
+} tm_time_stat;
+
+void tm_time_stat_begin(tm_time_stat *ts);
+void tm_time_stat_end(tm_time_stat *ts, const char *name);
+
 struct tm_data {
   /* Valid pointer range. */
   void *ptr_range[2];
+
+  int inited;
 
   /* The current process. */
   enum tm_phase phase;
@@ -177,17 +207,20 @@ struct tm_data {
   /* Current tm_alloc() list change stats. */
   size_t alloc_n[tm__LAST2];
   
-  /* tm_alloc() timing. */
-  struct timeval td; /* Last allocation time. */
-  struct timeval ts; /* Total allocation time. */
-  struct timeval tw; /* Worst allocation time. */
+  /* Stats */
+  tm_time_stat 
+    ts_alloc, 
+    ts_gc,
+    ts_phase[tm_TOTAL];
 
   /* Roots */
-  struct {
-    const char *name;
-    const void *l, *h;
-  } roots[8];
+  tm_root roots[8];
   int nroots;
+  tm_root aroots[8]; /* anti-root */
+  int naroots;
+  int root_datai, root_newi;
+  int stack_grows;
+  void **stack_ptrp;
 
   /* Current root mark. */
   int rooti;
