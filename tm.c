@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.9 2000-01-07 09:38:30 stephensk Exp $ */
+/* $Id: tm.c,v 1.10 2000-01-13 11:19:00 stephensk Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -12,12 +12,12 @@
 /****************************************************************************/
 /* User control vars. */
 
-long tm_node_alloc_some_size = 10;
+long tm_node_alloc_some_size = 2;
 long tm_root_mark_some_size = 512;
-long tm_node_mark_some_size = 512;
-long tm_node_sweep_some_size = 100;
-long tm_block_sweep_some_size = 10;
-long tm_node_unmark_some_size = 100;
+long tm_node_mark_some_size = 2;
+long tm_node_sweep_some_size = 2;
+long tm_block_sweep_some_size = 2;
+long tm_node_unmark_some_size = 2;
 int  tm_root_mark_full = 1;
 
 
@@ -35,12 +35,13 @@ const char *tm_msg_prefix = "";
 
 static const char *tm_msg_enable_default = 
 // "sNpwtFWVAg*r"
-// "gFWA"
+   "gFWA"
 //  "gTFWA"
- "RgTFWA"
+// "RgTFWA"
 ;
 
 int tm_msg_enable_all = 0;
+
 
 /****************************************************************************/
 /* Safety */
@@ -74,6 +75,11 @@ static const char *tm_color_name[] = {
   "n",     /* tm_NU */
   "u",     /* tm_b */
   "p",     /* tm_b_NU */
+
+  "O",     /* tm_B_OS */
+  "o",     /* tm_b_OS */
+  "P",     /* tm_B_OS_M */
+  "p",     /* tm_b_OS_M */
   0
 };
 
@@ -103,13 +109,14 @@ static const char *tm_phase_name[] = {
  ** Default allocated nodes to "not marked".
  ** Rational: some are allocated but thrown away early.
  */
-#define tm_EALL tm_ECRU
+#define tm_DEFAULT_ALLOC_COLOR tm_ECRU
 #else
  /*
  ** Default allocated nodes to "scheduled, not marked".
  ** Rational: they are allocated because they are to be used (referred to).
+ ** This seems to cause it to keep allocating new pages before sweeping.
  */
-#define tm_EALL tm_GREY
+#define tm_DEFAULT_ALLOC_COLOR tm_GREY
 #endif
 
 /*
@@ -121,18 +128,29 @@ from WHITE to ECRU.
 The SWEEP phase moves newly allocated nodes
 from WHITE to BLACK, because, the ECRU lists are considered to be 
 unmarked garbage and the BLACK lists are considered to
-be marked and scanned during the SWEEP phase.
+in use during the SWEEP phase.  
+
+GREY might seem a better choice for SWEEP allocs but,
+if any reference that has not already been found by MARK 
+cannot possibly exist, there for cannot be stored within nodes 
+allocated during SWEEP.
 */
 
+#if 1
+#define tm_SWEEP_ALLOC_COLOR tm_BLACK
+#else
+#define tm_SWEEP_ALLOC_COLOR tm_GREY
+#endif
+
 static const tm_color tm_phase_alloc[] = {
-  tm_EALL,  /* tm_ALLOC */
-  tm_EALL,  /* tm_ROOT */
-  tm_EALL,  /* tm_MARK */
-  tm_GREY,  /* tm_SWEEP */
-  tm_EALL   /* tm_UNMARK */
+  tm_DEFAULT_ALLOC_COLOR,  /* tm_ALLOC */
+  tm_DEFAULT_ALLOC_COLOR,  /* tm_ROOT */
+  tm_DEFAULT_ALLOC_COLOR,  /* tm_MARK */
+  tm_SWEEP_ALLOC_COLOR,    /* tm_SWEEP */
+  tm_DEFAULT_ALLOC_COLOR   /* tm_UNMARK */
 };
 
-#undef tm_EALL
+#undef tm_DEFAULT_ALLOC_COLOR
 
 /**************************************************************************/
 /* Global allocator data */
@@ -173,7 +191,24 @@ static unsigned long tm_alloc_pass = 0;
 
 static char _tm_msg_enable_table[256];
 
-static int _tm_msg_ignored = 0;
+void tm_msg_enable(const char *codes, int enable)
+{
+  const unsigned char *r;
+ 
+  enable = enable ? 1 : -1;
+  for ( r = codes; *r; r ++ ) {
+    /* '\1' enables all codes. */
+    if ( *r == '\1' ) {
+      memset(_tm_msg_enable_table, enable, sizeof(_tm_msg_enable_table));
+      break;
+    } else {
+      _tm_msg_enable_table[*r] += enable;
+    }
+  }
+}
+
+static int _tm_msg_ignored = 0; 
+/* True if last tm_msg() was disabled; used by tm_msg1() */
 
 void tm_msg(const char *format, ...)
 {
@@ -185,7 +220,7 @@ void tm_msg(const char *format, ...)
 
   /* Default tm_msg_file. */
   if ( ! tm_msg_file )
-    tm_msg_file = stdout;
+    tm_msg_file = stderr;
 
   if ( ! *format )
     return;
@@ -229,7 +264,7 @@ void tm_msg1(const char *format, ...)
 /****************************************************************************/
 /* Generalize error handling. */
 
-void tm_stop()
+void tm_stop() /* put a debugger break point here! */
 {
 }
 
@@ -273,9 +308,6 @@ void _tm_assert(const char *expr, const char *file, int lineno)
 
 #define tm_warn(X,Y...) ((X) ? 0 : (tm_msg1("\n"), tm_msg("WARNING assertion \"%s\" failed %s:%d ", #X, __FILE__, __LINE__), tm_msg1("" Y), tm_msg1("\n"), tm_stop(), 1))
 
-
-/****************************************************************************/
-/* Init. */
 
 
 /****************************************************************************/
@@ -353,7 +385,7 @@ static int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
     /* *c = *a; */
     return 0;
   }
-  if ( a->l <= b->l && b->h <= a->h ) {
+  if ( a->l < b->l && b->h < a->h ) {
     /*
      * a            L------H
      * b   H-----------------------H
@@ -511,11 +543,11 @@ int tm_ptr_is_in_root_set(const void *ptr)
 static void tm_register_mark();
 static void tm_stack_mark();
 
-static void __tm_write_root_ignore(void **referentp);
-static void __tm_write_root_root(void **referentp);
-static void __tm_write_root_mark(void **referentp);
-static void __tm_write_root_sweep(void **referentp);
-void (*_tm_write_root)(void **refp) = __tm_write_root_ignore;
+static void __tm_write_root_ignore(void *referent);
+static void __tm_write_root_root(void *referent);
+static void __tm_write_root_mark(void *referent);
+static void __tm_write_root_sweep(void *referent);
+void (*_tm_write_root)(void *referent) = __tm_write_root_ignore;
 
 static void __tm_write_barrier_ignore(void *referent);
 static void __tm_write_barrier_root(void *referent);
@@ -529,11 +561,20 @@ static void __tm_write_barrier_pure_mark(void *referent);
 static void __tm_write_barrier_pure_sweep(void *referent);
 void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_pure_ignore;
 
+static int tm_stack_growth(char *ptr, int depth)
+{
+  char *top_of_stack = (char*) &top_of_stack;
+  if ( depth ) {
+    return tm_stack_growth(ptr, depth - 1);
+  }
+  return top_of_stack - ptr;
+}
+
 static void tm_root_loop_init()
 {
   tm.rooti = tm.root_datai;
   tm.rp = tm.roots[tm.rooti].l;
-  tm.global_mutations = tm.stack_mutations = 0;
+  tm.data_mutations = tm.stack_mutations = 0;
 }
 
 static void tm_phase_init(int p)
@@ -561,7 +602,7 @@ static void tm_phase_init(int p)
     tm_marking = 0;
     tm_sweeping = 0;
 
-    tm.stack_mutations = tm.global_mutations = 0;
+    tm.stack_mutations = tm.data_mutations = 0;
 
     /* Initialize root mark loop. */
     tm_root_loop_init();
@@ -576,7 +617,7 @@ static void tm_phase_init(int p)
     tm_marking = 1;
     tm_sweeping = 0;
 
-    tm.stack_mutations = tm.global_mutations = 0;
+    tm.stack_mutations = tm.data_mutations = 0;
 
     /* Set up for marking. */
     tm_node_LOOP_INIT(tm_GREY);
@@ -635,41 +676,48 @@ static __inline void tm_block_sweep_init()
 
 
 
-void tm_msg_enable(const char *codes)
-{
-  const unsigned char *r;
-  
-  for ( r = codes; *r; r ++ ) {
-    if ( *r == '\1' ) {
-      memset(_tm_msg_enable_table, 1, sizeof(_tm_msg_enable_table));
-      break;
-    } else {
-      _tm_msg_enable_table[*r] = 1;
-    }
-  }
-}
+/****************************************************************************/
+/* Init. */
 
 void tm_init(int *argcp, char ***argvp, char ***envpp)
 {
   int i;
 
-  if ( tm.inited ) {
-    tm_msg("\nWARNING: tm_init() called more than once.");
+  /* Time stat names, */
+  tm.ts_alloc_os.name = "AOS";
+  tm.ts_alloc.name = "A";
+  tm.ts_free.name = "F";
+  tm.ts_gc.name = "GC";
+  for ( i = 0; i < (sizeof(tm.ts_phase)/sizeof(tm.ts_phase[0])); i ++ ) {
+    tm.ts_phase[i].name = tm_phase_name[i];
   }
 
   /* Msg ignore table. */
   if ( tm_msg_enable_all ) {
-    memset(_tm_msg_enable_table, 1, sizeof(_tm_msg_enable_table));
-  } else
-  {
-    tm_msg_enable(tm_msg_enable_default);
-    _tm_msg_enable_table[' '] = 1;
-    _tm_msg_enable_table['\t'] = 1;
-    _tm_msg_enable_table['\n'] = 1;
-    _tm_msg_enable_table['\r'] = 1;
+    tm_msg_enable("\1", 1);
+  } else {
+    tm_msg_enable(tm_msg_enable_default, 1);
+    tm_msg_enable(" \t\n\r", 1);
   }
 
-#if 1
+  tm_msg_enable("WF", 1);
+
+  if ( tm.inited ) {
+    tm_msg("WARNING: tm_init() called more than once.\nf");
+  }
+  tm.initing ++;
+
+  if ( ! argcp ) {
+    tm_msg("WARNING: tm_init() not called from main().\n");
+  }
+
+  if ( ! envpp ) {
+    extern char **environ;
+    tm_msg("WARNING: tm_init(): not passed &envp.\n");
+    envpp = (char ***) &environ;
+  }
+
+#if 0
 #define P(X) tm_msg(" %s = %ld\n", #X, (long) X);
   P(sizeof(tm_list));
   P(sizeof(tm_node));
@@ -685,32 +733,54 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   /* Roots. */
   tm.nroots = 0;
-  tm.global_mutations = tm.stack_mutations = 0;
+  tm.data_mutations = tm.stack_mutations = 0;
 
   tm.root_datai = -1;
 
+  /* Roots: register set. */
+  /* A C jmpbuf struct contains the save registers set, hopefully. */
   tm_root_add("register", &tm.jb, (&tm.jb) + 1);
 
   /* Roots: stack */
+
   {
-    void *l = &i;    /* top of stack */
-    void *h = envpp; /* bottom of stack */
+    void *bottom_of_stack, *top_of_stack = (void*) &i;
 
-    /* Determine direction of stack growth. */
-    if ( l < h ) {
-      tm.stack_grows = -1;
-    } else {
-      void *t = l;
-      l = h;
-      h = t;
-      tm.stack_grows = 1;
+#ifndef tm_ENVIRON_0_ALLOCATED_ON_STACK
+#define tm_ENVIRON_0_ALLOCATED_ON_STACK 1
+#endif
+
+#if tm_ENVIRON_0_ALLOCATED_ON_STACK
+    {
+      extern char **environ;
+      bottom_of_stack = (void*) environ[0];
     }
-    
-    /* Attempt to nudge to page boundaries. */
-    l = (void*) ((unsigned long) (l) - ((unsigned long) (l) % tm_PAGESIZE));
-    h = (void*) ((unsigned long) (h) + (tm_PAGESIZE - ((unsigned long) (h) % tm_PAGESIZE)));
+#else
+  /* argvp contains a caller's auto variable. */
+  /* Hope that we are being called from somewhere close to the bottom of the stack. */
+    bottom_of_stack = (void*) argvp;
+#endif
 
-    i = tm_root_add("stack", l, h);
+    {
+      void *l = top_of_stack;
+      void *h = bottom_of_stack;
+      
+      /* Determine direction of stack growth. */
+      if ( tm_stack_growth((char*) &l, 5) < 0 ) {
+	tm.stack_grows = -1;
+      } else {
+	void *t = l;
+	l = h;
+	h = t;
+	tm.stack_grows = 1;
+      }
+      
+      /* Attempt to nudge to page boundaries. */
+      l = (void*) ((unsigned long) (l) - ((unsigned long) (l) % tm_PAGESIZE));
+      h = (void*) ((unsigned long) (h) + (tm_PAGESIZE - ((unsigned long) (h) % tm_PAGESIZE)));
+      
+      i = tm_root_add("stack", l, h);
+    }
 
     /* Remember where to put the stack pointer. */
     if ( tm.stack_grows < 0 ) {
@@ -725,8 +795,11 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   }
 
 
+  /* Anti-roots: do not scan tm's internal data structures. */
   tm_root_remove("tm", &tm, &tm + 1);
 
+
+  /* Roots: initialized, and zeroed data segments. */
 #ifdef __win32__
   {
     extern int _data_start__, _data_end__, _bss_start__, _bss_end__;
@@ -735,7 +808,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
     tm_root_add("uninitialized data", &_bss_start__, &_bss_end__);
 
   }
-#define tm_roots_init
+#define tm_roots_data_segs
 #endif
 
 #ifdef __linux__
@@ -746,25 +819,18 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
     tm_root_add("initialized data", &__data_start, &__bss_start);
     tm_root_add("uninitialized data", &__bss_start, &_end);
   }
-#define tm_roots_init
+#define tm_roots_data_segs
 #endif
 
-#ifndef tm_roots_init
+#ifndef tm_roots_data_segs
 #error must specify how to find the data segment(s) for root marking.
 #endif
 
 
-  /* IMPLEMENT: Support dynamically-loaded libraries data segments. */
+  /* IMPLEMENT: Support dynamically-loaded library data segments. */
 
-  /* Validate root sets. */
-  {
-    extern int _tm_user_bss[], _tm_user_data[];
-
-    tm_assert(tm_ptr_is_in_root_set(_tm_user_bss), ": _tm_user_bss = %p", _tm_user_bss);
-    tm_assert(tm_ptr_is_in_root_set(_tm_user_data), ": _tm_user_data = %p", _tm_user_data);
-    tm_set_stack_ptr(&i);
-    tm_assert(tm_ptr_is_in_root_set(&i));
-  }
+  /* Dump the root sets. */
+  tm_msg_enable("R", 1);
 
   tm_msg("R ROOTS {\n");
   for ( i = 0; tm.roots[i].name; ++ i ) {
@@ -778,6 +844,17 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   }
   tm_msg("R }\n");
 
+  tm_msg_enable("R", 0);
+
+  /* Validate root sets. */
+  {
+    extern int _tm_user_bss[], _tm_user_data[];
+
+    tm_assert(tm_ptr_is_in_root_set(_tm_user_bss), ": _tm_user_bss = %p", _tm_user_bss);
+    tm_assert(tm_ptr_is_in_root_set(_tm_user_data), ": _tm_user_data = %p", _tm_user_data);
+    tm_set_stack_ptr(&i);
+    tm_assert(tm_ptr_is_in_root_set(&i), ": &i = %p", &i);
+  }
 
   /* Root marking. */
   tm_root_loop_init();
@@ -808,7 +885,10 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   /* Start by allocating. */
   tm_phase_init(tm_ALLOC);
 
+  /* Finally... initialized. */
+  tm.initing --;
   tm.inited ++;
+  tm_msg_enable("WF", 0);
 }
 
 /***************************************************************************/
@@ -873,18 +953,35 @@ void *tm_alloc_os(long size)
 {
   void *ptr;
 
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_alloc_os);
+#endif
+
   ptr = sbrk(size);
 
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_alloc_os);
+#endif
+
+  if ( tm.alloc_os_expected ) {
+    tm_warn(ptr == tm.alloc_os_expected, "ptr = %p, expected = %p", ptr, tm.alloc_os_expected);
+  }
   if ( ! ptr ) {
     tm_msg("A 0 %ld\n", (long) size);
   } else
   if ( size > 0 ) {
     tm_msg("A a %p[%ld]\n", ptr, (long) size);
+    tm.alloc_os_expected = (char *)ptr + size;
   } else if ( size < 0 ) {
     tm_msg("A d %p[%ld]\n", ptr, (long) size);
-  } else {
+    tm.alloc_os_expected += size;
+  }
+#if 0 
+  else {
     tm_msg("A z\n");
   }
+#endif
+
 
   return ptr;
 }
@@ -911,11 +1008,12 @@ void tm_block_init(tm_block *b)
   tm_block_sweep_init();
 
   /* Remember the address of the first block allocated. */
-  if ( ! tm.block_base ) {
-    tm.block_base = b;
+  tm.block_last = b;
+  if ( ! tm.block_first ) {
+    tm.block_first = b;
   } else {
     /* Make sure heap grows up, other code depends on it. */
-    tm_assert((void*) b >= (void*) tm.block_base);
+    tm_assert((void*) b >= (void*) tm.block_first);
   }
 }
 
@@ -1020,7 +1118,15 @@ tm_block *tm_block_alloc(size_t size)
     if ( tm_ptr_h < (void*) b->end ) {
       tm_ptr_h = b->end;
     }
-    
+
+    /* A new block was allocated from the OS. */
+    tm.n[tm_B_OS] ++;
+    if ( tm.n[tm_B_OS_M] < tm.n[tm_B_OS] )
+      tm.n[tm_B_OS_M] = tm.n[tm_B_OS];
+
+    tm.n[tm_b_OS] += size;
+    if ( tm.n[tm_b_OS_M] < tm.n[tm_b_OS] )
+      tm.n[tm_b_OS_M] = tm.n[tm_b_OS];
   }
 
   b->size = size;
@@ -1047,10 +1153,6 @@ void tm_block_free(tm_block *b)
   tm_assert_test(b->type->n[tm_B]);
   b->type->n[tm_B] --;
 
-  /* Remove from t->blocks list and add to free block list. */
-  tm_list_remove_and_append(&tm.free_blocks, b);
-  tm_list_set_color(b, tm_FREE_BLOCK);
-
   /* Don't allocate nodes from it any more. */
   if ( b->type->ab == b ) {
     b->type->ab = 0;
@@ -1058,6 +1160,30 @@ void tm_block_free(tm_block *b)
 
   /* Dissassociate with the type. */
   b->type = 0;
+
+  /* If b was the last block allocated from the OS: */
+  if ( tm_alloc_os(0) == (void*) b->end ) {
+    /* Remove from free list. */
+    tm_list_remove(b);
+    tm.block_last = 0;
+
+    /* Reduce valid node ptr range. */
+    tm_assert(tm_ptr_h == b->end);
+    tm_ptr_h = b;
+
+    /* Return it back to OS. */
+    tm_assert_test(tm.n[tm_B_OS]);
+    tm.n[tm_B_OS] --;
+    tm_assert_test(tm.n[tm_b_OS] > b->size);
+    tm.n[tm_b_OS] -= b->size;
+
+    tm_alloc_os(- b->size);
+  } else {
+    /* Remove from t->blocks list and add to free block list. */
+    tm_list_remove_and_append(&tm.free_blocks, b);
+    tm_list_set_color(b, tm_FREE_BLOCK);
+  }
+
 
   /* Reset block sweep iterator. */
   tm_block_sweep_init();
@@ -1080,7 +1206,6 @@ static tm_block * tm_block_alloc_for_type(tm_type *t)
     b->type = t;
     t->n[tm_B] ++;
     tm_list_insert(&t->blocks, b);
-    
   }
 
   tm_msg("b a b%p t%p\n", (void*) b, (void*) t);
@@ -1680,6 +1805,7 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn
       if ( sum )
 	sum[tm_b_NU] = sum[tm_NU] ? sum[tm_b] / sum[tm_NU] : 0;
     }
+
   }
 
   /* Print fields. */
@@ -1696,11 +1822,11 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn
 void tm_print_stats()
 {
   tm_type *t;
-  size_t sum[tm__LAST2];
+  size_t sum[tm__LAST3];
 
   memset(sum, 0, sizeof(sum));
 
-  _tm_msg_enable_table['X'] ++;
+  tm_msg_enable("X", 1);
 
   tm_msg("X { t tb%lu[%lu]\n",
 	 tm.n[tm_B],
@@ -1714,11 +1840,19 @@ void tm_print_stats()
   }
   tm_list_LOOP_END;
 
+  /* current/max number of blocks/bytes allocated from OS is in tm.n[]. */
+  sum[tm_B_OS] = tm.n[tm_B_OS];
+  sum[tm_b_OS] = tm.n[tm_b_OS];
+  sum[tm_B_OS_M] = tm.n[tm_B_OS_M];
+  sum[tm_b_OS_M] = tm.n[tm_b_OS_M];
+
   tm_print_utilization("X  S ", 0, sum, sizeof(sum)/sizeof(sum[0]), sum);
 
   tm_msg("X }\n");
 
-  _tm_msg_enable_table['X'] --;
+  tm_msg_enable("X", 0);
+
+  tm_print_time_stats();
 
   //tm_validate_lists();
 }
@@ -1729,7 +1863,7 @@ void tm_print_block_stats()
 
   tm_block *b;
 
-  _tm_msg_enable_table['X'] ++;
+  tm_msg_enable("X", 1);
 
   tm_msg("X { b tb%lu[%lu]\n",
 	 tm.n[tm_B],
@@ -1760,7 +1894,7 @@ void tm_print_block_stats()
 
   tm_msg("X }\n");
 
-  _tm_msg_enable_table['X'] --;
+  tm_msg_enable("X", 0);
 }
 
 
@@ -1849,7 +1983,7 @@ static void tm_root_mark_all()
   for ( i = 0; tm.roots[i].name; i ++ ) {
     tm_root_mark_id(i);
   }
-  tm.global_mutations = tm.stack_mutations = 0;
+  tm.data_mutations = tm.stack_mutations = 0;
   tm_root_loop_init();
   tm_msg("r G%lu B%lu }\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
 }
@@ -2102,7 +2236,6 @@ static size_t tm_node_sweep_some_for_type(tm_type *t)
 	break;
       }
     }
-
   }
 
   if ( count ) 
@@ -2119,6 +2252,57 @@ static void tm_nodes_sweep_all()
   }
 }
 
+static int tm_block_sweep_maybe(tm_block *b, int *count, unsigned long *bytes)
+{
+  tm_block_validate(b);
+
+  do {
+#if 0
+    tm_msg("V: t %s %p, b %s %p\n", 
+	   tm_struct_name[tm_list_color(tm.bt)], tm.bt, 
+	   tm_struct_name[tm_list_color(tm.bb)], tm.bb);
+#endif
+    
+    if ( tm_warn(tm_list_next(b) != b) ) {
+      tm_block_sweep_init();
+      break;
+    }
+    if ( tm_warn(tm_list_color(b) == tm_LIVE_BLOCK, "b = %p", b) )
+      continue;
+
+    tm_assert_test(tm_list_color(b) == tm_LIVE_BLOCK);
+
+    /*
+    ** If all nodes in the block are free, 
+    ** remove all nodes in the block from any lists.
+    */
+    if ( b->n[tm_WHITE] == b->n[tm_TOTAL] ) {
+      tm_node *n;
+      
+      /* First block. */
+      n = tm_block_node_begin(b);
+      while ( (void*) n < tm_block_node_alloc(b) ) {
+	/* Remove and advance. */
+	tm_node_delete(n, b);
+	n = tm_block_node_next(b, n);
+      }
+      
+      (*count) ++;
+      (*bytes) += b->size;
+
+      /* Free the block. */
+      tm_block_free(b);
+
+#if 1
+      /* The block was entirely cleaned, so quit now. */
+      return 1;
+#endif
+    }
+  } while ( 0 );
+    
+  return 0;
+}
+
 static int tm_block_sweep_some()
 {
   int count = 0;
@@ -2128,7 +2312,15 @@ static int tm_block_sweep_some()
   if ( left > tm.n[tm_B] )
     left = tm.n[tm_B];
 
-  do {
+  /*
+  ** Try to sweep last block allocated from OS first
+  ** because we might be able to return it to the OS.
+  */
+  if ( tm.block_last && tm_block_sweep_maybe(tm.block_last, &count, &bytes) ) {
+    left --;
+  }
+
+  while ( left -- > 0 ) {
     /* Try next block. */
     if ( tm.bb == 0 || (void*) tm.bb == (void*) &tm.bt->blocks ) {
       tm.bt = tm_list_next(tm.bt);
@@ -2145,55 +2337,20 @@ static int tm_block_sweep_some()
     {
       tm_block *b = tm.bb;
 
-      tm_block_validate(b);
-
-#if 0
-      tm_msg("V: t %s %p, b %s %p\n", 
-	     tm_struct_name[tm_list_color(tm.bt)], tm.bt, 
-	     tm_struct_name[tm_list_color(tm.bb)], tm.bb);
-#endif
-
       tm.bb = tm_list_next(b);
 
-      if ( tm_warn(tm_list_next(b) != b) ) {
-	tm_block_sweep_init();
-	break;
-      }
-      if ( tm_warn(tm_list_color(b) == tm_LIVE_BLOCK, "b = %p", b) )
-	continue;
+#if 1
       if ( tm_warn(b->type == tm.bt, "b = %p, b->type = %p, tm.bt = %p", b, b->type, tm.bt) )
 	continue;
-
-      tm_assert_test(tm_list_color(b) == tm_LIVE_BLOCK);
       tm_assert_test(b->type == tm.bt);
+#endif
 
-      /*
-      ** If all nodes in the block are free, 
-      ** remove all nodes in the block from any lists.
-      */
-      if ( b->n[tm_WHITE] == b->n[tm_TOTAL] ) {
-	tm_node *n;
-
-	/* First block. */
-	n = tm_block_node_begin(b);
-	while ( (void*) n < tm_block_node_alloc(b) ) {
-	  /* Remove and advance. */
-	  tm_node_delete(n, b);
-	  n = tm_block_node_next(b, n);
-	}
-
-	count ++;
-	bytes += b->size;
-
-	/* Free the block. */
-	tm_block_free(b);
-	
-	/* The block was entirely cleaned, so quit now. */
+      if ( tm_block_sweep_maybe(b, &count, &bytes) ) {
 	left = 0;
 	break;
       }
     }
-  } while ( left -- > 0 );
+  }
 
   if ( count ) 
     tm_msg("b s b%lu b%lu\n", (unsigned long) count, (unsigned long) bytes);
@@ -2281,6 +2438,9 @@ void tm_gc_full_inner()
 /***************************************************************************/
 /* write barrier */
 
+
+/*******************************************************************************/
+
 /*
 ** tm_root_write() should be called after modifing a root ptr.
 */
@@ -2289,37 +2449,35 @@ void tm_mark(void *ptr)
   tm_possible_ptr_mark(ptr);
 }
 
-
-static void __tm_write_root_ignore(void **ptrp)
+static void __tm_write_root_ignore(void *referent)
 {
   tm_abort();
   /* DO NOTHING */
 }
 
-static void __tm_write_root_root(void **ptrp)
+static void __tm_write_root_root(void *referent)
 {
   tm_abort();
-  tm_mark(*ptrp);
-  tm_msg("w r p%p\n", *ptrp);
+  tm_mark(* (void**) referent);
+  tm_msg("w r p%p\n", referent);
 }
 
-static void __tm_write_root_mark(void **ptrp)
+static void __tm_write_root_mark(void *referent)
 {
   tm_abort();
-  tm_mark(*ptrp);
-  tm_msg("w r p%p\n", *ptrp);
+  tm_mark(* (void**) referent);
+  tm_msg("w r p%p\n", referent);
 }
 
-static void __tm_write_root_sweep(void **ptrp)
+static void __tm_write_root_sweep(void *referent)
 {
   tm_abort();
-  /*
-  ** Force allocater back to ROOT phase.
-  */
-  tm.global_mutations ++;
-  tm_msg("w r p%p\n", *ptrp);
+  tm_msg("w r p%p\n", referent);
 }
 
+
+/*******************************************************************************/
+/* General write barrier routine. */
 
 /*
 ** tm_write_barrier(ptr) must be called after any ptrs
@@ -2365,7 +2523,7 @@ static void __tm_write_barrier_root(void *ptr)
 
   /*
   ** If the ptr is a reference to a stack allocated object,
-  ** do nothing, because the stack will be marked atomically before
+  ** do nothing, because the stack will be scanned atomically before
   ** the sweep phase.
   */
   if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
@@ -2385,7 +2543,7 @@ static void __tm_write_barrier_root(void *ptr)
   ** Must be a pointer to statically allocated (root) object.
   ** Mark the root as being mutated.
   */
-  tm.global_mutations ++;
+  tm.data_mutations ++;
   tm_msg("w r p%p\n", ptr);
 }
 
@@ -2412,14 +2570,14 @@ static void __tm_write_barrier_mark(void *ptr)
   **
   ** If its not a reference to a node.
   ** It must be a reference to a statically allocated object.
-  ** This means the global root set has (probably) been mutated.
+  ** This means the data root set has (probably) been mutated.
   ** Must flag the roots for remarking before the sweep phase.
   **
   */
   if ( (n = tm_ptr_to_node(ptr)) ) {
     tm_write_barrier_node(n);
   } else {
-    tm.global_mutations ++;
+    tm.data_mutations ++;
     tm_msg("w r p%p\n", ptr);
   }
 }
@@ -2447,17 +2605,20 @@ static void __tm_write_barrier_sweep(void *ptr)
   **
   ** If its not a reference to a node,
   ** it must be a reference to a statically allocated object.
-  ** This means the global root set has (probably) been mutated.
+  ** This means the data root set has (probably) been mutated.
   ** Must flag the roots for remarking before the sweep phase.
   **
   */
   if ( (n = tm_ptr_to_node(ptr)) ) {
     tm_write_barrier_node(n);
   } else {
-    tm.global_mutations ++;
+    tm.data_mutations ++;
     tm_msg("w r p%p\n", ptr);
   }
 }
+
+/*******************************************************************************/
+/* the tm_write_barrier_pure(ptr) assumes ptr is directly from tm_alloc. */
 
 static void __tm_write_barrier_pure_ignore(void *ptr)
 {
@@ -2516,7 +2677,8 @@ static __inline void *tm_node_alloc_free(tm_type *t)
   }
 }
 
-void tm_free(void *ptr)
+
+void tm_free_inner(void *ptr)
 {
   tm_block *b;
   tm_node *n;
@@ -2540,12 +2702,17 @@ void *tm_alloc_type_inner(tm_type *t)
   tm_alloc_pass = 0;
   memset(tm.alloc_n, 0, sizeof(tm.alloc_n));
 
-  tm.next_phase = -1;
+  tm.next_phase = (enum tm_phase) -1;
   
   // tm_validate_lists();
 
   //try_again:
   tm_alloc_pass ++;
+
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_phase[tm.phase]);
+#endif
+
   switch ( tm.phase ) {
   case tm_ALLOC:
     /* Keep allocating until out of free nodes. */
@@ -2578,7 +2745,7 @@ void *tm_alloc_type_inner(tm_type *t)
       ** Rationale: A reference to a new node may have been
       ** copied from the unmarked stack to a global root.
       */
-      if ( tm_root_mark_full || tm.global_mutations || tm.stack_mutations ) {
+      if ( tm_root_mark_full || tm.data_mutations || tm.stack_mutations ) {
 	/* Mark all roots. */
 	tm_root_mark_all();
       } else {
@@ -2639,20 +2806,27 @@ void *tm_alloc_type_inner(tm_type *t)
       }
     }
     break;
+
+  default:
+    tm_abort();
+    break;
   }
   
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_phase[tm.phase]);
+#endif
+
+  /* Switch to new phase. */
+  if ( tm.next_phase != (enum tm_phase) -1 )
+    tm_phase_init(tm.next_phase);
+
   /* Take one from the free list. */
   if ( ! (ptr = tm_node_alloc_free(t)) ) {
     /* We must attempt to allocate from os. */
     tm_node_alloc_some(t, tm_node_alloc_some_size);
     ptr = tm_node_alloc_free(t);
     tm_assert_test(ptr);
-  }
-  
-
-  /* Switch to new phase. */
-  if ( tm.next_phase >= 0 )
-    tm_phase_init(tm.next_phase);
+  }  
 
   tm_msg("a %p[%lu]\n", ptr, (unsigned long) t->size);
 
@@ -2702,6 +2876,8 @@ void *tm_realloc_inner(void *oldptr, size_t size)
 /* user level routines */
 
 /* Avoid leaving garbage on the stack. */
+/* Don't put this in user.c, so it cannot be optimized away. */
+
 void _tm_clear_some_stack_words()
 {
   int some_words[64];

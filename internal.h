@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.7 2000-01-07 09:38:30 stephensk Exp $ */
+/* $Id: internal.h,v 1.8 2000-01-13 11:19:00 stephensk Exp $ */
 
 /****************************************************************************/
 
@@ -16,6 +16,7 @@
 #endif
 
 /****************************************************************************/
+/* Color */
 
 #ifndef tm_TIME_STAT
 #define tm_TIME_STAT 1 /* Enable timing stats. */
@@ -33,11 +34,18 @@ typedef enum tm_color {
   tm__LAST,
 
   /* Type-level Stats. */
-  tm_B = tm__LAST, /* Total blocks. */
+  tm_B = tm__LAST, /* Total blocks in use. */
   tm_NU,           /* Total nodes in use. */
   tm_b,            /* Total bytes in use. */
   tm_b_NU,         /* Avg bytes/node. */
   tm__LAST2,
+
+  /* Block-level Stats. */
+  tm_B_OS = tm__LAST2, /* Blocks currently allocated from OS. */
+  tm_b_OS,             /* Bytes currently allocated from OS. */
+  tm_B_OS_M,           /* Peak blocks allocated from OS. */
+  tm_b_OS_M,           /* Peak bytes allocated from OS. */
+  tm__LAST3,
 
   /* Aliases for internal structure coloring. */
   tm_FREE_BLOCK = tm_WHITE,
@@ -47,9 +55,17 @@ typedef enum tm_color {
 
 } tm_color;
 
+/****************************************************************************/
+/* Node */
+
 typedef struct tm_node {
   tm_list list;         /* The current list for the node. */
 } tm_node;
+
+/****************************************************************************/
+/*
+** A tm_block is always aligned to tm_block_SIZE.
+*/
 
 #ifndef tm_name_GUARD
 #define tm_name_GUARD 0
@@ -59,9 +75,6 @@ typedef struct tm_node {
 #define tm_block_GUARD 0
 #endif
 
-/*
-** A tm_block is always aligned to tm_block_SIZE.
-*/
 typedef struct tm_block {
   tm_list list;         /* Type's block list */
 
@@ -95,6 +108,7 @@ typedef struct tm_block {
 #define tm_block_node_size(b) ((b)->type->size + tm_node_HDR_SIZE)
 #define tm_block_node_next(b, n) ((void*) (((char*) (n)) + tm_block_node_size(b)))
 
+/****************************************************************************/
 /*
 ** A tm_type represents an information about all types of a specific size.
 ** Keeps track of:
@@ -119,6 +133,7 @@ typedef struct tm_type {
 } tm_type;
 
 /****************************************************************************/
+/* Configuration. */
 
 enum tm_config {
   tm_ALLOC_ALIGN = 8, /* Nothing smaller than this is actually allocated. */
@@ -138,7 +153,7 @@ enum tm_config {
 };
 
 /****************************************************************************/
-/* Internal data. */
+/* Phases. */
 
 enum tm_phase {
   tm_ALLOC = 0, /* Alloc from free.                       (WHITE->ECRU) */
@@ -146,38 +161,52 @@ enum tm_phase {
   tm_MARK,      /* Marking marked roots, alloc os.        (GREY->BLACK) */
   tm_SWEEP,     /* Sweepng unmarked nodes, alloc free/os. (ECRU->WHITE) */
   tm_UNMARK,    /* Ummarking marked roots, alloc free/os. (BLACK->ECRU) */
+  tm_phase_END
 };
+
+/****************************************************************************/
+/* Root sets. */
 
 typedef struct tm_root {
   const char *name;
   const void *l, *h;
 } tm_root;
 
+/****************************************************************************/
+/* Stats. */
+
 typedef struct tm_time_stat {
   const char *name;
-  struct timeval 
+  double 
     td, /* Last allocation time. */
     ts, /* Total allocation time. */
     tw, /* Worst allocation time. */
-    t0, t1;
+    t0, t1, 
+    t01, t11;
+  short tw_changed;
   unsigned int count;
 } tm_time_stat;
 
 void tm_time_stat_begin(tm_time_stat *ts);
-void tm_time_stat_end(tm_time_stat *ts, const char *name);
+void tm_time_stat_end(tm_time_stat *ts);
+
+/****************************************************************************/
+/* Internal data. */
 
 struct tm_data {
   /* Valid pointer range. */
   void *ptr_range[2];
 
-  int inited;
+  short inited, initing;
 
   /* The current process. */
-  enum tm_phase phase;
-  int next_phase;
+  enum tm_phase phase, next_phase;
 
   /* Block. */
-  void *block_base;
+  tm_block *block_first; /* The first block allocated. */
+  tm_block *block_last;  /* The last block allocated. */
+  void *alloc_os_expected; /* The next ptr expected from tm_alloc_os(). */
+
 #if 0
   unsigned long block_bitmap[tm_block_N_MAX / (sizeof(unsigned long)*8)];
 #endif
@@ -198,36 +227,38 @@ struct tm_data {
   tm_type *type_hash[tm_type_hash_LEN];
 
   /* Global node counts. */
-  size_t n[tm__LAST2];
+  size_t n[tm__LAST3];
 
   /* Type color list iterators. */
   tm_type *tp[tm_TOTAL];
   tm_node *np[tm_TOTAL];
 
   /* Current tm_alloc() list change stats. */
-  size_t alloc_n[tm__LAST2];
+  size_t alloc_n[tm__LAST3];
   
   /* Stats */
-  tm_time_stat 
-    ts_alloc, 
-    ts_gc,
-    ts_phase[tm_TOTAL];
+  tm_time_stat /* time spent: */
+    ts_alloc_os,            /* in tm_alloc_os(). */
+    ts_alloc,               /* in tm_alloc().    */
+    ts_free,                /* in tm_free().     */
+    ts_gc,                  /* in tm_gc_full().  */
+    ts_phase[tm_phase_END]; /* in each phase.    */
 
   /* Roots */
   tm_root roots[8];
-  int nroots;
   tm_root aroots[8]; /* anti-root */
-  int naroots;
-  int root_datai, root_newi;
-  int stack_grows;
+  short nroots;
+  short naroots;
+  short root_datai, root_newi;
+  short stack_grows;
   void **stack_ptrp;
 
   /* Current root mark. */
-  int rooti;
+  short rooti;
   const char *rp;
 
   /* How many root mutations happened since the ROOT phase. */
-  unsigned long global_mutations;
+  unsigned long data_mutations;
   unsigned long stack_mutations;
 
   /* Register roots. */
@@ -242,7 +273,6 @@ extern struct tm_data tm;
 
 /****************************************************************************/
 /* Internal procs. */
-
 
 void tm_set_stack_ptr(void* ptr);
 

@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.8 2000-01-07 09:38:31 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.9 2000-01-13 11:19:01 stephensk Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -24,7 +24,7 @@ static const char *_run_name = "<UNKNOWN>";
 #define my_gc_full() tm_gc_full()
 #define my_print_stats() tm_print_stats(); tm_print_block_stats()
 
-#define SWEEP_IS_ERROR 1
+#define SWEEP_IS_ERROR 0
 
 static int my_alloc_id = 1;
 static void *my_alloc(size_t size)
@@ -296,7 +296,7 @@ static void test6()
 
   tm_sweep_is_error = SWEEP_IS_ERROR;
 
-  tm_msg_enable("w");
+  tm_msg_enable("w", 1);
   for ( i = 0; i < nalloc; i ++ ) {
     my_cons *c = my_cons_(0, nsize);
     *rp = c;
@@ -311,6 +311,7 @@ static void test6()
   end_test();
 
   print_my_cons_list("test6", root);
+  tm_msg_enable("w", 0);
 }
 
 #if 1
@@ -326,8 +327,7 @@ static void test7()
     root = c;
 
     if ( (i & 3) == 0 ) {
-      int size = my_rand(nsize);
-      my_cons **p = &roots[my_rand(100)];
+      my_cons **p = &roots[my_rand(sizeof(roots)/sizeof(roots[0]))];
       if ( *p ) {
 	(*p)->cdr = c;
 	tm_write_barrier_pure(*p);
@@ -377,7 +377,7 @@ static void test8()
       print_my_cons_list("test8", roots[i]);
     }
     tm_print_stats();
-  } while ( 1 );
+  } while ( tm_alloc_id < 40000000 );
 
   print_my_cons_list("test8", root);
 
@@ -392,10 +392,14 @@ int main(int argc, char **argv, char **envp)
 
   srand(0x54ae3523);
 
+#if 0
+  tm_init(&argc, &argv, &envp);
+#endif
+
   tm_msg(_run_sep);
   tm_msg("* %s\n", "START");
   
-  tm_init(&argc, &argv, &envp);
+  //tm_msg_enable("T", 1);
 
   run_test(test1);
   run_test(test2);

@@ -1,75 +1,166 @@
-/* $Id: user.c,v 1.6 2000-01-07 09:38:31 stephensk Exp $ */
+/* $Id: user.c,v 1.7 2000-01-13 11:19:01 stephensk Exp $ */
+
+#ifndef tm_USE_times
+#define tm_USE_times 0
+#endif
 
 #include "tm.h"
 #include "internal.h"
 
-#define tv_fmt "%lu.%06lu"
-#define tv_fmt_args(V) (unsigned long) (V).tv_sec, (unsigned long) (V).tv_usec
+#if tm_USE_times
+
+#include <sys/times.h>
+
+#else
+
+#include <sys/time.h>
+#include <unistd.h>
+
+static __inline double tv_2_double(struct timeval *t)
+{
+  return (double) t->tv_sec + (double) t->tv_usec / 1000000.0;
+}
+#endif
 
 int _tm_user_bss[4];
 int _tm_user_data[4] = { 0, 1, 2, 3 };
 
 /***************************************************************************/
+/* time stats support. */
 
-typedef struct timeval tv;
 
-static __inline void tv_sum(tv *sum, tv *dt, tv *t0, tv *t1, tv *mt)
-{
-  int mt_changed = 0;
-
-  /* Normalize t1 - t0 */
-  while ( t1->tv_usec < t0->tv_usec ) {
-    t1->tv_usec += 1000000;
-    t1->tv_sec --;
-  }
-
-  /* Compute dt */
-  dt->tv_usec = t1->tv_usec - t0->tv_usec;
-  sum->tv_usec += dt->tv_usec;
-
-  dt->tv_sec = t1->tv_sec - t0->tv_sec;
-  sum->tv_sec += dt->tv_sec;
-
-  /* Normalize sum */
-  while ( sum->tv_usec > 1000000 ) {
-    sum->tv_usec -= 1000000;
-    sum->tv_sec ++;
-  }
-
-  /* Calc max dt time. */
-  if ( mt->tv_sec < dt->tv_sec ) {
-    *mt = *dt;
-    mt_changed = 1;
-  } else if ( mt->tv_sec == dt->tv_sec && mt->tv_usec < dt->tv_usec ) {
-    mt->tv_usec = dt->tv_usec;
-    mt_changed = 1;
-  }
-  if ( mt_changed ) {
-    tm_msg("T A wt" tv_fmt "\n", tv_fmt_args(*mt));
-  }
-
-}
 
 void tm_time_stat_begin(tm_time_stat *ts)
 {
-  gettimeofday(&ts->t0, 0);
+#if tm_USE_times
+  struct tms t0;
+  times(&t0);
+  ts->t0 = (double) t0.tms_utime / (double) CLOCKS_PER_SEC;
+  ts->t01 = (double) t0.tms_stime / (double) CLOCKS_PER_SEC;
+#else
+  struct timeval t0;
+  gettimeofday(&t0, 0);
+  ts->t0 = tv_2_double(&t0);
+#endif
 }
 
-void tm_time_stat_end(tm_time_stat *ts, const char *name)
+
+void tm_time_stat_print_(tm_time_stat *ts, int flags)
 {
-  ts->name = name;
-  ts->count ++;
-  gettimeofday(&ts->t1, 0);
-  tv_sum(&ts->ts, &ts->td, &ts->t0, &ts->t1, &ts->tw);
-  tm_msg("T %s"
-	 " dt" tv_fmt 
+#define tv_fmt "%.7f"
+#define tv_fmt_args(V) (double) (V)
+
+  tm_msg("T %s \t"
+	 ,
+	 ts->name);
+
+  if ( ! (flags & (2|4)) ) {
+    tm_msg1(
+	   " dt" tv_fmt
+	   ,
+	   tv_fmt_args(ts->td)
+	   );
+  }
+
+  tm_msg1(
 	 " st" tv_fmt 
-	 " \n",
-	 name, 
-	 tv_fmt_args(ts->td),
+	 ,
 	 tv_fmt_args(ts->ts)
 	 );
+
+  if ( flags & 1 ) {
+    tm_msg1(
+	   " wt" tv_fmt
+	   ,
+	   tv_fmt_args(ts->tw)
+	   );
+  }
+
+  if ( flags & 2 ) {
+    tm_msg1(
+	   " c%lu"
+	   , 
+	   (unsigned long) ts->count
+	   );
+  }
+
+  if ( flags & 4 ) {
+    tm_msg1(
+	    " at%7f"
+	    ,
+	    (double) ts->ts / ts->count
+	    );
+  }
+
+  tm_msg1("\n");
 }
+
+
+void tm_time_stat_end(tm_time_stat *ts)
+{
+#if tm_USE_times
+  {
+    struct tms t1;
+    times(&t1);
+    ts->t1 = (double) t1.tms_utime / (double) CLOCKS_PER_SEC;
+    ts->t11 = (double) t1.tms_stime / (double) CLOCKS_PER_SEC;
+  }
+#else
+  {
+    struct timeval t1;
+    gettimeofday(&t1, 0);
+    ts->t1 = tv_2_double(&t1);
+  }
+#endif
+
+  ts->count ++;
+
+  /* Compute dt. */
+  ts->td = ts->t1 - ts->t0;
+  ts->td += ts->t11 - ts->t01;
+
+  /* Compute sum of dt. */
+  ts->ts += ts->td;
+
+  /* Compute worst time. */
+  if ( (ts->tw_changed = ts->tw < ts->td) ) {
+    ts->tw = ts->td;
+  }
+
+  /* Print stats. */
+  tm_time_stat_print_(ts, ts->tw_changed ? 1 : 0);
+}
+
+
+void tm_print_time_stats()
+{
+  int i;
+
+  tm_msg_enable("T", 1);
+
+  tm_msg("T {\n");
+
+  tm_time_stat_print_(&tm.ts_alloc_os, ~0);
+  tm_time_stat_print_(&tm.ts_alloc, ~0);
+  tm_time_stat_print_(&tm.ts_free, ~0);
+  tm_time_stat_print_(&tm.ts_gc, ~0);
+  for ( i = 0; i < (sizeof(tm.ts_phase)/sizeof(tm.ts_phase[0])); ++ i ) {
+    tm_time_stat_print_(&tm.ts_phase[i], ~0);
+  }
+
+  tm_msg("T }\n");
+
+  tm_msg_enable("T", 0);
+}
+
+/***************************************************************************/
+/* User-level routines. */
+
+/*
+** Save the registers and stack pointers, before
+** calling the "inner" routines.
+** Begin timing stats.
+*/
 
 void *tm_alloc(size_t size)
 {
@@ -78,16 +169,21 @@ void *tm_alloc(size_t size)
   if ( size == 0 )
     return 0;
 
+  if ( ! tm.inited ) {
+    tm_init(0, (char***) ptr, 0);
+  }
+
 #if tm_TIME_STAT
   tm_time_stat_begin(&tm.ts_alloc);
 #endif
 
   tm_clear_some_stack_words();
   tm_set_stack_ptr(&ptr);
+
   ptr = tm_alloc_inner(size);
 
 #if tm_TIME_STAT
-  tm_time_stat_end(&tm.ts_alloc, "A");
+  tm_time_stat_end(&tm.ts_alloc);
 #endif
 
   return ptr;
@@ -110,12 +206,14 @@ void *tm_alloc_desc(tm_adesc *desc)
   ptr = tm_alloc_desc_inner(desc);
 
 #if tm_TIME_STAT
-  tm_time_stat_end(&tm.ts_alloc, "A");
+  tm_time_stat_end(&tm.ts_alloc);
 #endif
 
   return ptr;
 }
 
+
+/***************************************************************************/
 
 
 void *tm_realloc(void *oldptr, size_t size)
@@ -139,15 +237,46 @@ void *tm_realloc(void *oldptr, size_t size)
   ptr = tm_realloc_inner(oldptr, size);
 
 #if tm_TIME_STAT
-  tm_time_stat_end(&tm.ts_alloc, "R");
+  tm_time_stat_end(&tm.ts_alloc);
 #endif
 
   return ptr;
 }
 
+
+/***************************************************************************/
+
+
+void tm_free(void *ptr)
+{
+  if ( ! tm.inited ) {
+    tm_init(0, (char***) ptr, 0);
+  }
+
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_free);
+#endif
+
+  tm_clear_some_stack_words();
+  tm_set_stack_ptr(&ptr);
+  tm_free_inner(ptr);
+
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_free);
+#endif
+}
+
+
+/***************************************************************************/
+
+
 void tm_gc_full()
 {
   void *ptr = 0;
+
+  if ( ! tm.inited ) {
+    tm_init(0, (char***) ptr, 0);
+  }
 
 #if tm_TIME_STAT
   tm_time_stat_begin(&tm.ts_gc);
@@ -155,10 +284,11 @@ void tm_gc_full()
 
   tm_clear_some_stack_words();
   tm_set_stack_ptr(&ptr);
+
   tm_gc_full_inner();
 
 #if tm_TIME_STAT
-  tm_time_stat_end(&tm.ts_gc, "GC");
+  tm_time_stat_end(&tm.ts_gc);
 #endif
 }
 

@@ -1,7 +1,7 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
-/* $Id: list.h,v 1.5 1999-12-28 20:42:16 stephensk Exp $ */
+/* $Id: list.h,v 1.6 2000-01-13 11:19:00 stephensk Exp $ */
 
 /****************************************************************************/
 
@@ -22,23 +22,20 @@ typedef struct tm_list {
 #define tm_list_prev(l) ((void*) (((tm_list*) (l))->_prev << 2))
 #define tm_list_INIT(N) tm_list _##N = { &_##N, &_##N }, *N = &_##N;
 
-static __inline void tm_list_init(void *_l)
+static __inline void tm_list_init(void *l)
 {
-  tm_list *l = _l;
   tm_list_set_next(l, l);
   tm_list_set_prev(l, l);
 }
 
-static __inline int tm_list_empty(void *_l)
+static __inline int tm_list_empty(void *l)
 {
-  tm_list *l = _l;
   return tm_list_next(l) == l;
 }
 
-static __inline void * tm_list_first(void *_l)
+static __inline void * tm_list_first(void *l)
 {
-  tm_list *l = _l;
-  return tm_list_empty(_l) ? 0 : tm_list_next(l);
+  return tm_list_empty(l) ? 0 : tm_list_next(l);
 }
 
 static __inline void tm_list_remove(void *_p)
@@ -51,11 +48,8 @@ static __inline void tm_list_remove(void *_p)
   tm_list_init(p);
 }
 
-static __inline void tm_list_insert(void *_l, void *_p)
+static __inline void tm_list_insert(void *l, void *p)
 {
-  tm_list *l = _l;
-  tm_list *p = _p;
-  
   tm_list_set_next(p, tm_list_next(l));
   tm_list_set_prev(p, l);
 
@@ -63,16 +57,13 @@ static __inline void tm_list_insert(void *_l, void *_p)
   tm_list_set_next(l, p);
 }
 
-static __inline void tm_list_append(void *_l, void *_p)
+static __inline void tm_list_append(void *l, void *p)
 {
-  tm_list_insert(tm_list_prev(_l), _p);
+  tm_list_insert(tm_list_prev(l), p);
 }
 
-static __inline void tm_list_append_list(void *_l, void *_p)
+static __inline void tm_list_append_list(void *l, void *p)
 {
-  tm_list *l = _l;
-  tm_list *p = _p;
-
   if ( ! tm_list_empty(p) ) {
     tm_list_set_prev(tm_list_next(p), tm_list_prev(l));
     tm_list_set_next(tm_list_prev(p), l);
@@ -83,16 +74,16 @@ static __inline void tm_list_append_list(void *_l, void *_p)
   tm_list_init(p);
 }
 
-static __inline void tm_list_remove_and_insert(void *_l, void *_p)
+static __inline void tm_list_remove_and_insert(void *l, void *p)
 {
-  tm_list_remove(_p);
-  tm_list_insert(_l, _p);
+  tm_list_remove(p);
+  tm_list_insert(l, p);
 }
 
-static __inline void tm_list_remove_and_append(void *_l, void *_p)
+static __inline void tm_list_remove_and_append(void *l, void *p)
 {
-  tm_list_remove(_p);
-  tm_list_append(_l, _p);
+  tm_list_remove(p);
+  tm_list_append(l, p);
 }
 
 static __inline void * tm_list_take_first(void *_l)

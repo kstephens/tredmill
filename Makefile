@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.6 2000-01-07 09:38:29 stephensk Exp $
+# $Id: Makefile,v 1.7 2000-01-13 11:18:59 stephensk Exp $
 
 INCLS += ..
 
@@ -9,7 +9,8 @@ H_FILES = \
 
 C_FILES = \
 	tm.c \
-	user.c
+	user.c \
+	malloc.c
 
 #################################################################
 # Pre
@@ -28,6 +29,7 @@ include $(MAKS)/tool.mak
 
 TOOL_NAME:=wb
 #TOOL_LIBS:=tredmill
+TOOL_TEST:=YES
 include $(MAKS)/tool.mak
 
 #################################################################
