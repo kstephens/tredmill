@@ -1,7 +1,7 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
-/* $Id: list.h,v 1.1 1999-06-09 07:00:50 stephensk Exp $ */
+/* $Id: list.h,v 1.2 1999-06-09 23:39:59 stephensk Exp $ */
 
 /****************************************************************************/
 
@@ -11,10 +11,10 @@ typedef struct tm_list {
 
 /****************************************************************************/
 
-#define tm_list_set_next(l,x) ((l)->next = (x))
-#define tm_list_next(l) (l)->next
-#define tm_list_set_prev(l,x) ((l)->prev = (x))
-#define tm_list_prev(l) (l)->prev
+#define tm_list_set_next(l,x) (((tm_list*) (l))->next = (x))
+#define tm_list_set_prev(l,x) (((tm_list*) (l))->prev = (x))
+#define tm_list_next(l) ((void*) ((tm_list*) (l))->next)
+#define tm_list_prev(l) ((void*) ((tm_list*) (l))->prev)
 #define tm_list_INIT(N) tm_list _##N = { &_##N, &_##N }, *N = &_##N;
 
 static __inline void tm_list_init(void *_l)
@@ -40,8 +40,8 @@ static __inline void tm_list_remove(void *_p)
 {
   tm_list *p = _p;
 
-  tm_list_set_prev(tm_list_next(p), tm_list_prev(p));
-  tm_list_set_next(tm_list_prev(p), tm_list_next(p));
+  tm_list_set_prev((tm_list*) tm_list_next(p), tm_list_prev(p));
+  tm_list_set_next((tm_list*) tm_list_prev(p), tm_list_next(p));
 
   tm_list_init(p);
 }

@@ -1,10 +1,10 @@
-/* $Id: tmtest.c,v 1.1 1999-06-09 07:00:51 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.2 1999-06-09 23:40:00 stephensk Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
 
-static int nalloc = 8000;
-static int nsize = 20;
+static int nalloc = 1000;
+static int nsize = 1000;
 
 static void my_prompt()
 {
@@ -18,6 +18,9 @@ static const char _run_sep[] = "************************************************
 
 static const char *_run_name = "<UNKNOWN>";
 
+#define my_gc_full() tm_gc_full()
+#define my_print_stats() tm_print_stats()
+
 static void _run_test(const char *name, void (*func)())
 {
   _run_name = name;
@@ -29,14 +32,14 @@ static void _run_test(const char *name, void (*func)())
 
   tm_msg(_run_sep);
   tm_msg("* %s END\n", _run_name);
-  //tm_gc_full();
-  //tm_print_stats();
+  my_gc_full();
+  my_print_stats();
 
   tm_msg(_run_sep);
   tm_msg("\n");
   my_prompt();
 
-  //tm_gc_full();
+  my_gc_full();
 }
 
 static void _end_test()
@@ -49,8 +52,8 @@ static void _end_test()
 
   tm_msg(_run_sep);
   tm_msg("* %s POST GC\n", _run_name);
-  // tm_gc_full();
-  // tm_print_stats();
+  my_gc_full();
+  my_print_stats();
   my_prompt();
 
   tm_msg(_run_sep);
@@ -217,6 +220,10 @@ static void test5()
 
 int main(int argc, char **argv, char **envp)
 {
+
+  tm_msg(_run_sep);
+  tm_msg("* %s\n", "START");
+  
   tm_init(&argc, &argv, &envp);
 
   run_test(test5);
@@ -227,6 +234,9 @@ int main(int argc, char **argv, char **envp)
 
   tm_gc_full();
   tm_print_stats();
+
+  tm_msg(_run_sep);
+  tm_msg("* %s\n", "END");
 
   return 0;
 }
