@@ -1,4 +1,4 @@
-/* $Id: wb.c,v 1.1 2000-01-07 09:38:32 stephensk Exp $ */
+/* $Id: wb.c,v 1.2 2000-01-07 09:40:40 stephensk Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,7 +7,7 @@
 #include <signal.h>
 #include <assert.h>
 #include "internal.h"
-#include "bitset.h"
+#include "util/bitset.h"
 #include "wb.h"
 
 /*********************************************************************/

@@ -1,8 +1,8 @@
 NAME=tredmill
 VERSION=0.1
-RCS_ID="$Id: PKG,v 1.2 1999-09-09 04:57:10 stephensk Exp $"
+RCS_ID="$Id: PKG,v 1.3 2000-01-07 09:40:40 stephensk Exp $"
 DESC="A real-time Treadmill garbage collector."
 CHANGES_RELEASES="0.1"
 CATEGORY="Development Tools"
-REQUIRES_PKGS="../maks"
+REQUIRES_PKGS="../maks ../util"
 REQUIRES_OTHERS=""
