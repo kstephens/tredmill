@@ -1,9 +1,10 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
-/* $Id: list.h,v 1.6 2000-01-13 11:19:00 stephensk Exp $ */
+/* $Id: list.h,v 1.7 2002-05-11 02:33:27 stephens Exp $ */
 
 /****************************************************************************/
+
 
 typedef struct tm_list {
   struct tm_list *_next;
@@ -11,7 +12,9 @@ typedef struct tm_list {
   unsigned _color : 2;
 } tm_list;
 
+
 /****************************************************************************/
+
 
 #define tm_list_color(l) (((tm_list*) (l))->_color)
 #define tm_list_set_color(l,c) (((tm_list*) (l))->_color = (c))
@@ -22,21 +25,31 @@ typedef struct tm_list {
 #define tm_list_prev(l) ((void*) (((tm_list*) (l))->_prev << 2))
 #define tm_list_INIT(N) tm_list _##N = { &_##N, &_##N }, *N = &_##N;
 
+
 static __inline void tm_list_init(void *l)
 {
   tm_list_set_next(l, l);
   tm_list_set_prev(l, l);
 }
 
+
 static __inline int tm_list_empty(void *l)
 {
   return tm_list_next(l) == l;
 }
 
+
 static __inline void * tm_list_first(void *l)
 {
   return tm_list_empty(l) ? 0 : tm_list_next(l);
 }
+
+
+static __inline void * tm_list_last(void *l)
+{
+  return tm_list_empty(l) ? 0 : tm_list_prev(l);
+}
+
 
 static __inline void tm_list_remove(void *_p)
 {
@@ -48,6 +61,7 @@ static __inline void tm_list_remove(void *_p)
   tm_list_init(p);
 }
 
+
 static __inline void tm_list_insert(void *l, void *p)
 {
   tm_list_set_next(p, tm_list_next(l));
@@ -57,10 +71,12 @@ static __inline void tm_list_insert(void *l, void *p)
   tm_list_set_next(l, p);
 }
 
+
 static __inline void tm_list_append(void *l, void *p)
 {
   tm_list_insert(tm_list_prev(l), p);
 }
+
 
 static __inline void tm_list_append_list(void *l, void *p)
 {
@@ -74,17 +90,20 @@ static __inline void tm_list_append_list(void *l, void *p)
   tm_list_init(p);
 }
 
+
 static __inline void tm_list_remove_and_insert(void *l, void *p)
 {
   tm_list_remove(p);
   tm_list_insert(l, p);
 }
 
+
 static __inline void tm_list_remove_and_append(void *l, void *p)
 {
   tm_list_remove(p);
   tm_list_append(l, p);
 }
+
 
 static __inline void * tm_list_take_first(void *_l)
 {
@@ -97,6 +116,7 @@ static __inline void * tm_list_take_first(void *_l)
     return 0;
   }
 }
+
 
 #define tm_list_LOOP(l, x) do { tm_list *__l = (tm_list*) (l), *__x = tm_list_next(__l); while ( __x != l ) { x = (void*) __x; __x = tm_list_next(__x); {
 #define tm_list_LOOP_END }}} while(0)

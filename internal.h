@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.8 2000-01-13 11:19:00 stephensk Exp $ */
+/* $Id: internal.h,v 1.9 2002-05-11 02:33:27 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -15,8 +15,10 @@
 #define PAGESIZE 4096
 #endif
 
+
 /****************************************************************************/
 /* Color */
+
 
 #ifndef tm_TIME_STAT
 #define tm_TIME_STAT 1 /* Enable timing stats. */
@@ -219,7 +221,7 @@ struct tm_data {
   tm_type *bt;
   tm_block *bb;
 
-  /* type hash table. */
+  /* Type hash table. */
   tm_type type_reserve[50], *type_free;
 #ifndef tm_type_hash_LEN
 #define tm_type_hash_LEN 101
@@ -271,8 +273,10 @@ extern struct tm_data tm;
 #define tm_ptr_l tm.ptr_range[0]
 #define tm_ptr_h tm.ptr_range[1]
 
+
 /****************************************************************************/
 /* Internal procs. */
+
 
 void tm_set_stack_ptr(void* ptr);
 
@@ -290,5 +294,10 @@ void tm_free_inner(void *ptr);
 
 void tm_gc_full_inner();
 
+void tm_abort();
+void tm_stop();
+void tm_fatal();
+
 /****************************************************************************/
+
 #endif

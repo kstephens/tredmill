@@ -1,4 +1,4 @@
-/* $Id: user.c,v 1.7 2000-01-13 11:19:01 stephensk Exp $ */
+/* $Id: user.c,v 1.8 2002-05-11 02:33:27 stephens Exp $ */
 
 #ifndef tm_USE_times
 #define tm_USE_times 0
@@ -153,8 +153,10 @@ void tm_print_time_stats()
   tm_msg_enable("T", 0);
 }
 
+
 /***************************************************************************/
 /* User-level routines. */
+
 
 /*
 ** Save the registers and stack pointers, before
@@ -291,5 +293,6 @@ void tm_gc_full()
   tm_time_stat_end(&tm.ts_gc);
 #endif
 }
+
 
 /***************************************************************************/

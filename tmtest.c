@@ -1,8 +1,12 @@
-/* $Id: tmtest.c,v 1.10 2000-05-10 03:57:37 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.11 2002-05-11 02:33:27 stephens Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
+#include <string.h> /* memset() */
 #include <assert.h>
+
+#include "internal.h" /* tm_abort() */
+
 
 static int nalloc = 1000;
 static int nsize = 100;
@@ -15,6 +19,7 @@ static void my_prompt()
 #endif 
 }
 
+
 #define my_rand(R) ((unsigned long) ((rand() >> 4) & 32767) * (R) / 32768)
 
 static const char _run_sep[] = "*************************************************************\n";
@@ -26,6 +31,7 @@ static const char *_run_name = "<UNKNOWN>";
 
 #define SWEEP_IS_ERROR 0
 
+
 static int my_alloc_id = 1;
 static void *my_alloc(size_t size)
 {
@@ -34,7 +40,7 @@ static void *my_alloc(size_t size)
   ptr = tm_alloc(size);
 
   if ( ptr == 0 ) {
-    fprintf(stderr, "\nOUT OF MEMORY!!\n");
+    fprintf(stderr, "\ntmtest: %s: OUT OF MEMORY!!\n", _run_name);
     tm_abort();
     return 0; /* NOTREACHED */
   }
@@ -93,6 +99,7 @@ static void _run_test(const char *name, void (*func)())
   my_gc_full();
 }
 
+
 static void _end_test()
 {
   tm_msg(_run_sep);
@@ -115,6 +122,7 @@ static void _end_test()
 #define run_test(X) _run_test(#X, &X)
 #define end_test() _end_test()
 
+
 static void test1()
 {
   int i;
@@ -130,6 +138,7 @@ static void test1()
   end_test();
 }
 
+
 static void test2()
 {
   int i;
@@ -144,6 +153,7 @@ static void test2()
 
   end_test();
 }
+
 
 static void test3()
 {
@@ -176,10 +186,13 @@ static void test3()
   end_test();
 }
 
+
 typedef struct my_cons {
   struct my_cons *car, *cdr;
   int visited;
 } my_cons;
+
+
 
 static void print_my_cons_list_internal(my_cons *p)
 {
@@ -214,6 +227,7 @@ static void print_my_cons_list_internal(my_cons *p)
   }
 }
 
+
 static void print_my_cons_list(const char *name, my_cons *p)
 {
   tm_msg("*: %s list: {\n", name);
@@ -222,10 +236,12 @@ static void print_my_cons_list(const char *name, my_cons *p)
   tm_msg("*: %s list: }\n", name);
 }
 
+
 static void *my_int(int i)
 {
   return (void*) (i << 2) + 1;
 }
+
 
 static void *my_cons_(void *d, int nsize)
 {
@@ -245,6 +261,7 @@ static void *my_cons_(void *d, int nsize)
 
   return c;
 }
+
 
 static void test4()
 {
@@ -269,7 +286,9 @@ static void test4()
   print_my_cons_list("test4", root);
 }
 
+
 static my_cons *test5_root = 0;
+
 
 static void test5()
 {
@@ -291,6 +310,7 @@ static void test5()
   test5_root = 0;
   tm_gc_full();
 }
+
 
 static void test6()
 {
@@ -319,6 +339,7 @@ static void test6()
   print_my_cons_list("test6", root);
   tm_msg_enable("w", 0);
 }
+
 
 #if 1
 static void test7()
@@ -349,6 +370,7 @@ static void test7()
   end_test();
 }
 #endif
+
 
 #if 1
 static void test8()
@@ -390,6 +412,7 @@ static void test8()
   end_test();
 }
 #endif
+
 
 int main(int argc, char **argv, char **envp)
 {

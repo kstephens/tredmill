@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.11 2000-05-10 03:57:36 stephensk Exp $ */
+/* $Id: tm.c,v 1.12 2002-05-11 02:33:27 stephens Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -264,9 +264,11 @@ void tm_msg1(const char *format, ...)
 /****************************************************************************/
 /* Generalize error handling. */
 
+
 void tm_stop() /* put a debugger break point here! */
 {
 }
+
 
 void tm_fatal()
 {
@@ -276,6 +278,7 @@ void tm_fatal()
 
   abort();
 }
+
 
 void tm_abort()
 {
@@ -312,6 +315,7 @@ void _tm_assert(const char *expr, const char *file, int lineno)
 
 /****************************************************************************/
 /* Root sets. */
+
 
 static int _tm_root_add_1(tm_root *a)
 {
@@ -350,6 +354,7 @@ static int _tm_root_add_1(tm_root *a)
   return i;
 }
 #undef MAX_ROOTS
+
 
 static int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
 {
@@ -426,6 +431,7 @@ static int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
   return -1;
 }
 
+
 static void _tm_root_add(tm_root *a)
 {
   int i;
@@ -454,6 +460,7 @@ static void _tm_root_add(tm_root *a)
 
   _tm_root_add_1(a);
 }
+
 
 int tm_root_add(const char *name, const void *l, const void *h)
 {
@@ -540,6 +547,7 @@ int tm_ptr_is_in_root_set(const void *ptr)
 /****************************************************************************/
 /* Phase support. */
 
+
 static void tm_register_mark();
 static void tm_stack_mark();
 
@@ -561,6 +569,7 @@ static void __tm_write_barrier_pure_mark(void *referent);
 static void __tm_write_barrier_pure_sweep(void *referent);
 void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_pure_ignore;
 
+
 static int tm_stack_growth(char *ptr, int depth)
 {
   char *top_of_stack = (char*) &top_of_stack;
@@ -570,12 +579,15 @@ static int tm_stack_growth(char *ptr, int depth)
   return top_of_stack - ptr;
 }
 
+
+
 static void tm_root_loop_init()
 {
   tm.rooti = tm.root_datai;
   tm.rp = tm.roots[tm.rooti].l;
   tm.data_mutations = tm.stack_mutations = 0;
 }
+
 
 static void tm_phase_init(int p)
 {
@@ -891,8 +903,10 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm_msg_enable("WF", 0);
 }
 
+
 /***************************************************************************/
 /* Node color mgmt. */
+
 
 #define tm_node_color(n) ((tm_color) tm_list_color(n))
 
@@ -929,6 +943,7 @@ static __inline void _tm_node_set_color(tm_node *n, tm_block *b, tm_color c)
   tm_list_set_color(n, c);
 }
 
+
 static __inline void tm_node_set_color(tm_node *n, tm_block *b, tm_color c)
 {
   tm_type *t;
@@ -945,8 +960,10 @@ static __inline void tm_node_set_color(tm_node *n, tm_block *b, tm_color c)
   //tm_validate_lists();
 }
 
+
 /****************************************************************************/
 /* Low-level alloc. */
+
 
 static __inline
 void *tm_alloc_os(long size)
@@ -986,6 +1003,7 @@ void *tm_alloc_os(long size)
 
   return ptr;
 }
+
 
 static __inline
 void tm_block_init(tm_block *b)
@@ -1140,6 +1158,7 @@ tm_block *tm_block_alloc(size_t size)
   return b;
 }
 
+
 static __inline
 void tm_block_free(tm_block *b)
 {
@@ -1218,6 +1237,7 @@ static tm_block * tm_block_alloc_for_type(tm_type *t)
 /*********************************************************************/
 /* Node creation/destruction. */
 
+
 static __inline void tm_node_init(tm_node *n, tm_block *b)
 {
   tm_type *t;
@@ -1243,6 +1263,7 @@ static __inline void tm_node_init(tm_node *n, tm_block *b)
 
   // tm_msg("N n%p t%p\n", (void*) n, (void*) t);
 }
+
 
 static __inline void tm_node_delete(tm_node *n, tm_block *b)
 {
@@ -1279,6 +1300,7 @@ static __inline void tm_node_delete(tm_node *n, tm_block *b)
 	 (unsigned long) t->size,
 	 (void*) t);
 }
+
 
 static __inline int tm_node_alloc_some(tm_type *t, long left)
 {
@@ -1397,13 +1419,16 @@ static __inline tm_type *tm_type_new(size_t size)
   return t;
 }
 
+
 /****************************************************************************/
 /* Structure lookup. */
+
 
 static __inline tm_type *tm_block_to_type(tm_block *b)
 {
   return b->type;
 }
+
 
 static __inline tm_block *tm_ptr_to_block(char *p)
 {
@@ -1425,20 +1450,25 @@ static __inline tm_block *tm_ptr_to_block(char *p)
   return (void*) b;
 }
 
+
 static __inline tm_node *tm_pure_ptr_to_node(void *_p)
 {
-  return (tm_node*) (((char*) _p) - tm_node_HDR_SIZE);
+  // return (tm_node*) (((char*) _p) - tm_node_HDR_SIZE);
+  return ((tm_node*) _p) - 1;
 }
+
 
 static __inline void *tm_node_to_ptr(tm_node *n)
 {
   return (void*) (n + 1);
 }
 
+
 static __inline tm_block *tm_node_to_block(tm_node *n)
 {
   return tm_ptr_to_block(tm_node_to_ptr(n));
 }
+
 
 static __inline tm_node *tm_ptr_to_node(void *p)
 {
@@ -1557,12 +1587,14 @@ static __inline tm_node *tm_ptr_to_node(void *p)
   }
 }
 
+
 static __inline tm_type *tm_node_to_type(tm_node *n)
 {
   tm_block *b = tm_ptr_to_block((char*) n);
   tm_block_validate(b);
   return b->type;
 }
+
 
 static __inline int tm_size_hash(size_t size)
 {
@@ -1579,6 +1611,7 @@ static __inline int tm_size_hash(size_t size)
 
   return i;
 }
+
 
 static __inline tm_type *tm_size_to_type_2(size_t size)
 {
@@ -1601,6 +1634,7 @@ static __inline tm_type *tm_size_to_type_2(size_t size)
   return t;
 }
 
+
 static __inline tm_type *tm_type_new_2(size_t size)
 {
   int i;
@@ -1619,6 +1653,7 @@ static __inline tm_type *tm_type_new_2(size_t size)
   return t;
 }
 
+
 tm_adesc *tm_adesc_for_size(tm_adesc *desc, int force_new)
 {
   tm_type *t;
@@ -1635,6 +1670,7 @@ tm_adesc *tm_adesc_for_size(tm_adesc *desc, int force_new)
 
   return t->desc;
 }
+
 
 static __inline tm_type *tm_size_to_type(size_t size)
 {
@@ -1685,6 +1721,7 @@ static __inline tm_type *tm_size_to_type(size_t size)
 
 /***************************************************************************/
 /* Stats. */
+
 
 void tm_validate_lists()
 {
@@ -1764,6 +1801,7 @@ void tm_validate_lists()
   tm_assert(n[tm_TOTAL] == tm.n[tm_TOTAL]);
 }
 
+
 static void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size_t *sum)
 {
   int j;
@@ -1820,6 +1858,7 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn
   tm_msg1("\n");
 }
 
+
 void tm_print_stats()
 {
   tm_type *t;
@@ -1857,6 +1896,7 @@ void tm_print_stats()
 
   //tm_validate_lists();
 }
+
 
 void tm_print_block_stats()
 {
@@ -1903,6 +1943,7 @@ void tm_print_block_stats()
 /***************************************************************************/
 /* Marking */
 
+
 static int tm_node_mark(tm_node *n)
 {
   switch ( tm_node_color(n) ) {
@@ -1935,6 +1976,7 @@ static int tm_node_mark(tm_node *n)
   return 0;
 }
 
+
 static tm_node * tm_possible_ptr_mark(void *p)
 {
   tm_node *n = tm_ptr_to_node(p);
@@ -1948,7 +1990,9 @@ static tm_node * tm_possible_ptr_mark(void *p)
 /***************************************************************************/
 /* root mark */
 
+
 static void tm_range_mark(const void *b, const void *e);
+
 
 static void tm_root_mark_id(int i)
 {
@@ -1964,10 +2008,12 @@ static void tm_register_mark()
   tm_root_mark_id(0);
 }
 
+
 void tm_set_stack_ptr(void *stackvar)
 {
   *tm.stack_ptrp = (char*) stackvar - 64;
 }
+
 
 static void tm_stack_mark()
 {
@@ -1975,6 +2021,7 @@ static void tm_stack_mark()
   tm_root_mark_id(1);
   tm.stack_mutations = 0;
 }
+
 
 static void tm_root_mark_all()
 {
@@ -2034,8 +2081,10 @@ static int tm_root_mark_some()
   return result; /* We're not done. */
 }
 
+
 /***************************************************************************/
 /* Marking */
+
 
 static void tm_range_mark(const void *b, const void *e)
 {
@@ -2049,6 +2098,7 @@ static void tm_range_mark(const void *b, const void *e)
     }
   }
 }
+
 
 static __inline void tm_node_mark_interior(tm_node *n, tm_block *b)
 {
@@ -2089,6 +2139,7 @@ static size_t tm_node_mark_some(long left)
   return tm.n[tm_GREY];
 }
 
+
 static void tm_node_mark_all()
 {
   while ( tm.n[tm_GREY] ) {
@@ -2100,6 +2151,7 @@ static void tm_node_mark_all()
 
 /***************************************************************************/
 /* Sweeping */
+
 
 #ifndef tm_sweep_is_error
 int tm_sweep_is_error = 0;
@@ -2173,7 +2225,9 @@ static int tm_check_sweep_error()
   return 0;
 }
 
+
 /*********************************************************************/
+
 
 static __inline void tm_node_sweep(tm_node *n, tm_block *b)
 {
@@ -2189,6 +2243,7 @@ static __inline void tm_node_sweep(tm_node *n, tm_block *b)
   
   tm_msg("s n%p\n", n);
 }
+
 
 static long tm_node_sweep_some(long left)
 {
@@ -2215,6 +2270,7 @@ static long tm_node_sweep_some(long left)
 
   return tm.n[tm_ECRU];
 }
+
 
 static size_t tm_node_sweep_some_for_type(tm_type *t)
 {
@@ -2245,6 +2301,7 @@ static size_t tm_node_sweep_some_for_type(tm_type *t)
   return tm.n[tm_ECRU];
 }
 
+
 static void tm_nodes_sweep_all()
 {
   while ( tm.n[tm_ECRU] ) {
@@ -2252,6 +2309,7 @@ static void tm_nodes_sweep_all()
     tm_node_sweep_some(tm.n[tm_TOTAL]);
   }
 }
+
 
 static int tm_block_sweep_maybe(tm_block *b, int *count, unsigned long *bytes)
 {
@@ -2303,6 +2361,7 @@ static int tm_block_sweep_maybe(tm_block *b, int *count, unsigned long *bytes)
     
   return 0;
 }
+
 
 static int tm_block_sweep_some()
 {
@@ -2363,6 +2422,7 @@ static int tm_block_sweep_some()
 /***************************************************************************/
 /* Unmarking */
 
+
 static size_t tm_node_unmark_some(long left)
 {
   size_t count = 0, bytes = 0;
@@ -2387,6 +2447,7 @@ static size_t tm_node_unmark_some(long left)
   return tm.n[tm_BLACK];
 }
 
+
 static void tm_node_unmark_all()
 {
   while ( tm.n[tm_BLACK] ) {
@@ -2395,8 +2456,10 @@ static void tm_node_unmark_all()
   }
 }
 
+
 /***************************************************************************/
-/* full gc */
+/* Full GC. */
+
 
 void tm_gc_full_inner()
 {
@@ -2436,6 +2499,7 @@ void tm_gc_full_inner()
   tm_msg("gc }\n");
 }
 
+
 /***************************************************************************/
 /* write barrier */
 
@@ -2450,11 +2514,13 @@ void tm_mark(void *ptr)
   tm_possible_ptr_mark(ptr);
 }
 
+
 static void __tm_write_root_ignore(void *referent)
 {
   tm_abort();
   /* DO NOTHING */
 }
+
 
 static void __tm_write_root_root(void *referent)
 {
@@ -2463,12 +2529,14 @@ static void __tm_write_root_root(void *referent)
   tm_msg("w r p%p\n", referent);
 }
 
+
 static void __tm_write_root_mark(void *referent)
 {
   tm_abort();
   tm_mark(* (void**) referent);
   tm_msg("w r p%p\n", referent);
 }
+
 
 static void __tm_write_root_sweep(void *referent)
 {
@@ -2479,6 +2547,7 @@ static void __tm_write_root_sweep(void *referent)
 
 /*******************************************************************************/
 /* General write barrier routine. */
+
 
 /*
 ** tm_write_barrier(ptr) must be called after any ptrs
@@ -2511,10 +2580,12 @@ static __inline void tm_write_barrier_node(tm_node *n)
   }
 }
 
+
 static void __tm_write_barrier_ignore(void *ptr)
 {
   /* DO NOTHING */
 }
+
 
 static void __tm_write_barrier_root(void *ptr)
 {
@@ -2547,6 +2618,7 @@ static void __tm_write_barrier_root(void *ptr)
   tm.data_mutations ++;
   tm_msg("w r p%p\n", ptr);
 }
+
 
 static void __tm_write_barrier_mark(void *ptr)
 {
@@ -2583,6 +2655,7 @@ static void __tm_write_barrier_mark(void *ptr)
   }
 }
 
+
 static void __tm_write_barrier_sweep(void *ptr)
 {
   tm_node *n;
@@ -2618,6 +2691,7 @@ static void __tm_write_barrier_sweep(void *ptr)
   }
 }
 
+
 /*******************************************************************************/
 /* the tm_write_barrier_pure(ptr) assumes ptr is directly from tm_alloc. */
 
@@ -2626,10 +2700,12 @@ static void __tm_write_barrier_pure_ignore(void *ptr)
   /* DO NOTHING */
 }
 
+
 static void __tm_write_barrier_pure_root(void *ptr)
 {
   /* DO NOTHING */
 }
+
 
 static void __tm_write_barrier_pure_mark(void *ptr)
 {
@@ -2637,16 +2713,20 @@ static void __tm_write_barrier_pure_mark(void *ptr)
   tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
 }
 
+
 static void __tm_write_barrier_pure_sweep(void *ptr)
 {
   tm_assert_test(tm.phase == tm_SWEEP);
   tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
 }
 
+
 /***************************************************************************/
 /* allocation */
 
+
 int tm_alloc_pass_max = 0;
+
 
 static __inline void *tm_node_alloc_free(tm_type *t)
 {
@@ -2845,15 +2925,18 @@ void *tm_alloc_type_inner(tm_type *t)
   return (void*) ptr;
 }
 
+
 void *tm_alloc_inner(size_t size)
 {
   return tm_alloc_type_inner(tm_size_to_type(size));  
 }
 
+
 void *tm_alloc_desc_inner(tm_adesc *desc)
 {
   return tm_alloc_type_inner((tm_type*) desc->hidden);
 }
+
 
 void *tm_realloc_inner(void *oldptr, size_t size)
 {
@@ -2873,8 +2956,10 @@ void *tm_realloc_inner(void *oldptr, size_t size)
   return (void*) ptr;
 }
 
+
 /***************************************************************************/
 /* user level routines */
+
 
 /* Avoid leaving garbage on the stack. */
 /* Don't put this in user.c, so it cannot be optimized away. */
@@ -2884,6 +2969,7 @@ void _tm_clear_some_stack_words()
   int some_words[64];
   memset(some_words, 0, sizeof(some_words));
 }
+
 
 /***************************************************************************/
 

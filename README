@@ -1,4 +1,4 @@
-$Id: README,v 1.3 1999-12-29 02:52:30 stephensk Exp $
+$Id: README,v 1.4 2002-05-11 02:33:27 stephens Exp $
 
 	Introduction
 
@@ -82,7 +82,7 @@ There are two versions of the write barrier:
 1. tm_write_barrier(R)
 2. tm_write_barrier_pure(R)
 
-tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc().  Do not use tm_write_barrier(R) if R might be an interior pointer or a pointer to a stack or statically allocated object.  Use tm_write_barrier(R) if you don't know where R points to.
+tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc().  Do not use tm_write_barrier_pure(R) if R might be an interior pointer or a pointer to a stack or statically allocated object.  Use tm_write_barrier(R) if you don't know where R points to.
 If R is a global root location tm_write_barrier(R) will cause global root rescanning if the collector is in the MARK phase.
 
 If you know you are modifing a global root ptr location.
@@ -95,7 +95,7 @@ A virtual memory write-barrier based on mmap() might be easier to manage.  Recol
 
 	Type segregation:
 
-Nodes are segregated by type (currently type is a size).  By default, types are rounded up to the next power of 2.  A specified allocation type can be requested with tm_adesc_for_size().  The allocation descriptor can then be used by tm_alloc_desc().  The opqaue->
+Nodes are segregated by type (currently type is a size).  By default, types are rounded up to the next power of 2.  A specified allocation type can be requested with tm_adesc_for_size().  The allocation descriptor can then be used by tm_alloc_desc().  The opaque->
 
 Each node type has its own colored lists, allocated block lists and accounting.
 
