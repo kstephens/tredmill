@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.5 1999-12-28 23:44:19 stephensk Exp $ */
+/* $Id: internal.h,v 1.6 1999-12-29 02:52:30 stephensk Exp $ */
 
 /****************************************************************************/
 
@@ -119,7 +119,7 @@ enum tm_config {
   tm_node_HDR_SIZE = sizeof(tm_node),
   tm_block_HDR_SIZE = sizeof(tm_block),
 
-  tm_block_SIZE = 8 * 1024,
+  tm_block_SIZE = 2 * 1024,
 
   tm_block_SIZE_MAX = tm_block_SIZE - tm_block_HDR_SIZE,
 
@@ -178,7 +178,9 @@ struct tm_data {
   size_t alloc_n[tm__LAST2];
   
   /* tm_alloc() timing. */
-  struct timeval ts, td;
+  struct timeval td; /* Last allocation time. */
+  struct timeval ts; /* Total allocation time. */
+  struct timeval tw; /* Worst allocation time. */
 
   /* Roots */
   struct {

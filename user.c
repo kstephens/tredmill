@@ -1,29 +1,50 @@
-/* $Id: user.c,v 1.4 1999-12-28 23:44:24 stephensk Exp $ */
+/* $Id: user.c,v 1.5 1999-12-29 02:52:32 stephensk Exp $ */
 
 #include "tm.h"
 #include "internal.h"
+
+#define tv_fmt "%lu.%06lu"
+#define tv_fmt_args(V) (unsigned long) (V).tv_sec, (unsigned long) (V).tv_usec
 
 /***************************************************************************/
 
 typedef struct timeval tv;
 
-static __inline void tv_sum(tv *sum, tv *dt, tv *t0, tv *t1)
+static __inline void tv_sum(tv *sum, tv *dt, tv *t0, tv *t1, tv *mt)
 {
+  int mt_changed = 0;
+
+  /* Normalize t1 - t0 */
   while ( t1->tv_usec < t0->tv_usec ) {
     t1->tv_usec += 1000000;
     t1->tv_sec --;
   }
 
+  /* Compute dt */
   dt->tv_usec = t1->tv_usec - t0->tv_usec;
   sum->tv_usec += dt->tv_usec;
 
   dt->tv_sec = t1->tv_sec - t0->tv_sec;
   sum->tv_sec += dt->tv_sec;
 
+  /* Normalize sum */
   while ( sum->tv_usec > 1000000 ) {
     sum->tv_usec -= 1000000;
     sum->tv_sec ++;
   }
+
+  /* Calc max dt time. */
+  if ( mt->tv_sec < dt->tv_sec ) {
+    *mt = *dt;
+    mt_changed = 1;
+  } else if ( mt->tv_sec == dt->tv_sec && mt->tv_usec < dt->tv_usec ) {
+    mt->tv_usec = dt->tv_usec;
+    mt_changed = 1;
+  }
+  if ( mt_changed ) {
+    tm_msg("T A wt" tv_fmt "\n", tv_fmt_args(*mt));
+  }
+
 }
 
 void *tm_alloc(size_t size)
@@ -44,12 +65,14 @@ void *tm_alloc(size_t size)
 
 #if 1
   gettimeofday(&t1, 0);
-  tv_sum(&tm.ts, &tm.td, &t0, &t1);
-  tm_msg("T A dt%lu.%09lu st%lu.%09lu\n",
-	 (unsigned long) tm.td.tv_sec,
-	 (unsigned long) tm.td.tv_usec,
-	 (unsigned long) tm.ts.tv_sec,
-	 (unsigned long) tm.ts.tv_usec);
+  tv_sum(&tm.ts, &tm.td, &t0, &t1, &tm.tw);
+  tm_msg("T A"
+	 " dt" tv_fmt 
+	 " st" tv_fmt 
+	 " \n",
+	 tv_fmt_args(tm.td),
+	 tv_fmt_args(tm.ts)
+	 );
 #endif
 
   return ptr;

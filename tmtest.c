@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.6 1999-12-28 23:44:24 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.7 1999-12-29 02:52:31 stephensk Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -23,6 +23,8 @@ static const char *_run_name = "<UNKNOWN>";
 
 #define my_gc_full() tm_gc_full()
 #define my_print_stats() tm_print_stats(); tm_print_block_stats()
+
+#define SWEEP_IS_ERROR 0
 
 static void _run_test(const char *name, void (*func)())
 {
@@ -136,7 +138,7 @@ static void test3()
 
   tm_gc_full();
   tm_gc_full();
-  tm_sweep_is_error = 1;
+  tm_sweep_is_error = SWEEP_IS_ERROR;
 
   for ( i = 0; i < nalloc; i ++ ) {
     size_t size = (1 << (i & 3)) * 8;
@@ -232,7 +234,7 @@ static void test4()
   my_cons *root = 0;
 
   tm_gc_full();
-  tm_sweep_is_error = 1;
+  tm_sweep_is_error = SWEEP_IS_ERROR;
 
   for ( i = 0; i < nalloc; i ++ ) {
     my_cons *c = my_cons_(my_int(i), root, nsize);
@@ -280,7 +282,7 @@ static void test6()
   tm_gc_full();
   print_my_cons_list("test6", test5_root);
 
-  tm_sweep_is_error = 1;
+  tm_sweep_is_error = SWEEP_IS_ERROR;
 
   for ( i = 0; i < nalloc; i ++ ) {
     my_cons *c = my_cons_(my_int(i), 0, nsize);

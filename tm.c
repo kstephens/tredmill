@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.7 1999-12-28 23:44:22 stephensk Exp $ */
+/* $Id: tm.c,v 1.8 1999-12-29 02:52:31 stephensk Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -36,8 +36,11 @@ const char *tm_msg_prefix = "";
 static const char *_tm_msg_enable = 
 // "sNpwtFWVAg*r"
 // "gFWA"
-  "gTFA"
+//  "gTFWA"
+ "gTFWA"
 ;
+
+int tm_msg_enable_all = 0;
 
 /****************************************************************************/
 /* Safety */
@@ -188,7 +191,7 @@ void tm_msg(const char *format, ...)
     return;
 
   /* Print header. */
-  fprintf(tm_msg_file, "%s%s%c %3lu ",
+  fprintf(tm_msg_file, "%s%s%c %6lu ",
 	  tm_msg_prefix,
 	  *tm_msg_prefix ? " " : "",
 	  tm_phase_name[tm.phase][0], 
@@ -436,11 +439,15 @@ static __inline void tm_block_sweep_init()
 }
 
 
+
 void tm_init(int *argcp, char ***argvp, char ***envpp)
 {
   int i;
 
   /* Msg ignore table. */
+  if ( tm_msg_enable_all ) {
+    memset(_tm_msg_enable_table, 1, sizeof(_tm_msg_enable_table));
+  } else
   {
     const unsigned char *r;
 
@@ -481,6 +488,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   _tm_add_root("stack", &i, envpp);
   /* IMPLEMENT: Support for multithreading stacks. */
 
+#ifdef __win32__
   {
     extern int _data_start__, _data_end__, _bss_start__, _bss_end__;
 
@@ -488,6 +496,23 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
     tm_add_root("uninitialized data", &_bss_start__, &_bss_end__);
 
   }
+#define tm_get_roots
+#endif
+
+#ifdef __linux__
+  {
+    extern int __bss_start, _end;
+
+    tm_add_root("data", &__bss_start, &_end);
+  }
+#define tm_get_roots
+#endif
+
+#ifndef tm_get_roots
+#error must specify how to find the data segment(s) for root marking.
+#endif
+
+
   /* IMPLEMENT: Support dynamically-loaded libraries data segments. */
 
   /* Root marking. */
@@ -694,6 +719,7 @@ tm_block *tm_block_alloc(size_t size)
       /* Left over. */
       lo = (char*) nb - (char*) b;
       if ( lo >= tm_block_SIZE ) {
+#if 0
 	b->size = lo;
 	b->begin = (char*) b + tm_block_HDR_SIZE;
 	b->end = (char*) b + lo;
@@ -702,13 +728,16 @@ tm_block *tm_block_alloc(size_t size)
 	tm_list_set_color(b, tm_FREE_BLOCK);
 
 	tm_list_append(&tm.free_blocks, b);
+#else
+	tm_msg("A al l %p[%lu]\n", b, (unsigned long) lo); 
+#endif
       } else {
 	tm_msg("A al l %p[%lu]\n", b, (unsigned long) lo); 
       }
 
       /* Make sure we are starting at block_SIZE alignment. */
       offset = (unsigned long) nb % tm_block_SIZE;
-      tm_assert(offset == 0);
+      // tm_assert(offset == 0);
 
       /* Try again. */
       goto alloc;
@@ -717,6 +746,15 @@ tm_block *tm_block_alloc(size_t size)
     /* Init bounds of the block's allocation space. */
     b->begin = (char*) b + tm_block_HDR_SIZE;
     b->end = (char*) b + size;
+
+    /* Update valid node ptr range. */
+    if ( tm_ptr_l > (void*) b->begin ) {
+      tm_ptr_l = b->begin;
+    }
+    if ( tm_ptr_h < (void*) b->end ) {
+      tm_ptr_h = b->end;
+    }
+    
   }
 
   b->size = size;
@@ -1000,14 +1038,14 @@ static __inline tm_node *tm_pure_ptr_to_node(void *_p)
   return (tm_node*) (((char*) _p) - tm_node_HDR_SIZE);
 }
 
-static __inline tm_block *tm_node_to_block(tm_node *n)
-{
-  return tm_ptr_to_block((void*) n);
-}
-
 static __inline void *tm_node_to_ptr(tm_node *n)
 {
   return (void*) (n + 1);
+}
+
+static __inline tm_block *tm_node_to_block(tm_node *n)
+{
+  return tm_ptr_to_block(tm_node_to_ptr(n));
 }
 
 static __inline tm_node *tm_ptr_to_node(void *p)
@@ -1063,9 +1101,15 @@ static __inline tm_node *tm_ptr_to_node(void *p)
 	** |                   |
 	** new pp              pp
 	*/
+
 	pp -= node_size;
+
+	/*
+	** Translate back to block header.
+	*/
+	pp += (unsigned long) b + tm_block_HDR_SIZE;
 	
- 	tm_msg("P nb p%p\n", (void*) p);
+ 	tm_msg("P nb p%p p0%p\n", (void*) p, (void*) pp);
 
 	/*
 	** If the pointer in the node header
@@ -1100,13 +1144,14 @@ static __inline tm_node *tm_ptr_to_node(void *p)
 	*/
 
 	pp -= node_off;
+
+	/*
+	** Translate back to block header.
+	*/
+	pp += (unsigned long) b + tm_block_HDR_SIZE;
       }
     }
 
-    /*
-    ** Translate back to block header.
-    */
-    pp += (unsigned long) b + tm_block_HDR_SIZE;
 
     /* It's a node. */
     n = (tm_node*) pp;
@@ -1716,6 +1761,9 @@ static int tm_check_sweep_error()
 
       tm_stop();
 
+      /* Clear worst alloc time. */
+      memset(&tm.tw, 0, sizeof(tm.tw));
+
       return 1;
     }
   }
@@ -2170,19 +2218,14 @@ static __inline void *tm_node_alloc_free(tm_type *t)
   if ( (n = tm_list_first(&t->l[tm_WHITE])) ) {
     char *ptr;
 
+    /* It better be free... */
     tm_assert_test(tm_node_color(n) == tm_WHITE);
 
+    /* A a ptr to node's data space. */
     ptr = tm_node_to_ptr(n);
 
+    /* Clear data space. */
     memset(ptr, 0, t->size);
-    
-    /* Update valid ptr range. */
-    if ( tm_ptr_l > (void*) ptr ) {
-      tm_ptr_l = ptr;
-    }
-    if ( tm_ptr_h < (void*) (ptr + t->size) ) {
-      tm_ptr_h = ptr + t->size;
-    }
     
     /* Put it on the appropriate allocated list. */
     tm_node_set_color(n, tm_node_to_block(n), tm_phase_alloc[tm.phase]);
@@ -2333,7 +2376,7 @@ void *tm_alloc_type_inner(tm_type *t)
   if ( tm.next_phase >= 0 )
     tm_phase_init(tm.next_phase);
 
-  tm_msg("a %p[%lu]\n", (unsigned long) t->size, (void*) ptr);
+  tm_msg("a %p[%lu]\n", ptr, (unsigned long) t->size);
 
   // tm_validate_lists();
 
