@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.10 2000-01-13 11:19:00 stephensk Exp $ */
+/* $Id: tm.c,v 1.11 2000-05-10 03:57:36 stephensk Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -738,7 +738,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm.root_datai = -1;
 
   /* Roots: register set. */
-  /* A C jmpbuf struct contains the save registers set, hopefully. */
+  /* A C jmpbuf struct contains the saved registers set, hopefully. */
   tm_root_add("register", &tm.jb, (&tm.jb) + 1);
 
   /* Roots: stack */
@@ -966,7 +966,8 @@ void *tm_alloc_os(long size)
   if ( tm.alloc_os_expected ) {
     tm_warn(ptr == tm.alloc_os_expected, "ptr = %p, expected = %p", ptr, tm.alloc_os_expected);
   }
-  if ( ! ptr ) {
+  if ( ptr == 0 || ptr == (void*) -1L ) {
+    ptr = 0;
     tm_msg("A 0 %ld\n", (long) size);
   } else
   if ( size > 0 ) {

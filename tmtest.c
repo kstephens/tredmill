@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.9 2000-01-13 11:19:01 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.10 2000-05-10 03:57:37 stephensk Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -32,6 +32,12 @@ static void *my_alloc(size_t size)
   void *ptr;
 
   ptr = tm_alloc(size);
+
+  if ( ptr == 0 ) {
+    fprintf(stderr, "\nOUT OF MEMORY!!\n");
+    tm_abort();
+    return 0; /* NOTREACHED */
+  }
 
   my_alloc_id = tm_alloc_id;
 
