@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.3 1999-06-16 08:35:05 stephensk Exp $
+# $Id: Makefile,v 1.4 1999-06-28 13:58:20 stephensk Exp $
 
 INCLS += ..
 
@@ -12,7 +12,7 @@ C_FILES = \
 	user.c
 
 #################################################################
-
+# Pre
 include $(MAKS)/pre.mak
 
 #################################################################
@@ -23,6 +23,7 @@ include $(MAKS)/lib.mak
 
 TOOL_NAME:=tmtest
 TOOL_LIBS:=tredmill
+TOOL_TEST:=YES
 include $(MAKS)/tool.mak
 
 #################################################################

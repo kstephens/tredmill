@@ -16,8 +16,8 @@ extern int tm_sweeping;
 
 /* Write barrier */
 
-extern void (*_tm_root_write)(void **refp);
-#define tm_root_write(X)(*_tm_root_write)(X)
+extern void (*_tm_write_root)(void **refp);
+#define tm_write_root(X)(*_tm_write_root)(X)
 
 extern void (*_tm_write_barrier)(void *referent);
 #define tm_write_barrier(R) (*_tm_write_barrier)(R)

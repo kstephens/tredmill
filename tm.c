@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.3 1999-06-16 08:35:07 stephensk Exp $ */
+/* $Id: tm.c,v 1.4 1999-06-28 13:58:24 stephensk Exp $ */
 #include "tm.h"
 #include "internal.h"
 #include <stdio.h>
@@ -219,8 +219,8 @@ static void tm_add_root(const char *name, const void *_l, const void *_h)
 static void tm_scan_registers();
 static void tm_scan_stacks();
 
-static void __tm_write_root_ignore(void *referent);
-static void __tm_write_root_root(void *referent);
+static void __tm_write_root_ignore(void **referentp);
+static void __tm_write_root_root(void **referentp);
 void (*_tm_write_root)(void **refp) = __tm_write_root_ignore;
 
 static void __tm_write_barrier_ignore(void *referent);
@@ -239,7 +239,7 @@ static void tm_init_phase(int p)
     tm_marking = 0;
     tm_sweeping = 0;
 
-    _tm_write_root = __tm_write_barrier_root;
+    _tm_write_root = __tm_write_root_ignore;
     _tm_write_barrier = __tm_write_barrier_ignore;
     _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
@@ -402,7 +402,7 @@ static __inline void tm_node_set_color(tm_node *n, tm_type *t, tm_color c)
 
   _tm_node_set_color(n, t, c);
 
-  tm_list_remove_and_insert(&t->l[c], n);
+  tm_list_remove_and_append(&t->l[c], n);
 }
 
 /****************************************************************************/
@@ -458,7 +458,7 @@ void tm_free_block(tm_block *b)
 {
   tm_assert_test(tm.n[tm_B]);
   tm.n[tm_B] --;
-  tm_list_remove_and_insert(&tm.free_blocks, b);
+  tm_list_remove_and_append(&tm.free_blocks, b);
   tm_msg("block: %p free\n", (void*) b);
 }
 
@@ -1361,14 +1361,14 @@ void tm_mark(void *ptr)
 }
 
 
-void __tm_root_write_ignore(void **ptrp)
+void __tm_write_root_ignore(void **ptrp)
 {
   /* DO NOTHING */
 }
-void __tm_root_write_root(void **ptrp)
+void __tm_write_root_root(void **ptrp)
 {
   tm_mark(*ptrp);
-  tm_msg("write barrier (root): %p\n", ptr);
+  tm_msg("write root: %p\n", *ptrp);
 }
 
 
@@ -1410,7 +1410,6 @@ static void __tm_write_barrier_ignore(void *ptr)
 
 static void __tm_write_barrier_root(void *ptr)
 {
-  tm_assert_test(tm.phase == tm_ROOTS);
   /* We are currently scanning roots.
   ** Don't know if this root has been scanned yet or not.
   */
@@ -1436,7 +1435,7 @@ static void __tm_write_barrier_root(void *ptr)
   ** Mark the root as being.
   */
   tm.root_mutations ++;
-  tm_msg("write barrier (root): %p\n", ptr);
+  tm_msg("write root: %p\n", ptr);
 
 }
 static void __tm_write_barrier_scan(void *ptr)
@@ -1467,7 +1466,7 @@ static void __tm_write_barrier_scan(void *ptr)
     tm_write_barrier_node(n);
   } else {
     tm.root_mutations ++;
-    tm_msg("write barrier (root): %p\n", ptr);
+    tm_msg("write root: %p\n", ptr);
   }
 }
 

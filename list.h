@@ -1,7 +1,7 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
-/* $Id: list.h,v 1.3 1999-06-16 08:35:07 stephensk Exp $ */
+/* $Id: list.h,v 1.4 1999-06-28 13:58:22 stephensk Exp $ */
 
 /****************************************************************************/
 
@@ -63,6 +63,11 @@ static __inline void tm_list_insert(void *_l, void *_p)
   tm_list_set_next(l, p);
 }
 
+static __inline void tm_list_append(void *_l, void *_p)
+{
+  tm_list_insert(tm_list_prev(_l), _p);
+}
+
 static __inline void tm_list_append_list(void *_l, void *_p)
 {
   tm_list *l = _l;
@@ -82,6 +87,12 @@ static __inline void tm_list_remove_and_insert(void *_l, void *_p)
 {
   tm_list_remove(_p);
   tm_list_insert(_l, _p);
+}
+
+static __inline void tm_list_remove_and_append(void *_l, void *_p)
+{
+  tm_list_remove(_p);
+  tm_list_append(_l, _p);
 }
 
 static __inline void * tm_list_take_first(void *_l)
