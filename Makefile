@@ -1,17 +1,33 @@
-# $Id: Makefile,v 1.2 1999-06-09 23:39:59 stephensk Exp $
+# $Id: Makefile,v 1.3 1999-06-16 08:35:05 stephensk Exp $
 
-OPT=-O3
-OPT=
-CFLAGS += -Wall -g $(OPT)
+INCLS += ..
 
-OFILES = tm.o user.o
+H_FILES = \
+	tm.h \
+	list.h \
+	internal.h
 
-tmtest.exe : tmtest.c $(OFILES) tm.h list.h Makefile
-	$(CC) $(CFLAGS) -o $@ tmtest.c $(OFILES)
+C_FILES = \
+	tm.c \
+	user.c
 
-test : tmtest.exe tmtest.gdb
-	gdb tmtest -x tmtest.gdb
+#################################################################
 
-$(OFILES) : Makefile tm.h list.h internal.h
+include $(MAKS)/pre.mak
 
+#################################################################
+# Create
+
+LIB_NAME:=tredmill
+include $(MAKS)/lib.mak
+
+TOOL_NAME:=tmtest
+TOOL_LIBS:=tredmill
+include $(MAKS)/tool.mak
+
+#################################################################
+# Basic
+include $(MAKS)/basic.mak
+
+#################################################################
 

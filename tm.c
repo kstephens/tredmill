@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.2 1999-06-09 23:39:59 stephensk Exp $ */
+/* $Id: tm.c,v 1.3 1999-06-16 08:35:07 stephensk Exp $ */
 #include "tm.h"
 #include "internal.h"
 #include <stdio.h>
@@ -22,84 +22,9 @@ int tm_sweeping = 0;
 
 FILE *tm_msg_file = 0;
 
-static const char *_tm_msg_enable = "wtNFg*";
+static const char *_tm_msg_enable = "bwtNFg*";
 
 /****************************************************************************/
-/* Data structure description. */
-
-/*
-This is a real-time, non-relocating, conservative, Treadmill allocator.
-
-TM attempts to limit the amount of scanning, marking and collecting during each call to tm_alloc() to avoid stopping the world for long periods of time.
-
-Each node is allocated from a fixed block size (except for blocks that will not fit within the fixed size).
-Each node has a "color" tag describing its current allocation state:
-
-1. white: free, unused.
-2. ecru: allocated, unmarked.
-3. grey: allocated, marked, unscanned.
-4. black: allocated, marked, scanned.
-
-For each size of node, a type is created.  Each type has it's own white, ecru, grey, and black lists.  Each node lives on its type's color list.
-
-The allocator has the following phases interleaved with allocation:
-
-1. ROOTS: Root marking.          (ECRU->GREY)
-2. ALLOC: Allocation.            (WHITE->GREY)
-3. SCAN: Scan marked nodes.      (GREY->BLACK)
-4. SWEEP: Freing unmarked nodes. (ECRU->WHITE)
-5. UNMARK: Unmarking marked.     (BLACK->ECRU)
-
-During each call to tm_alloc.
-
-1. ROOTS: A fixed number of root bytes are scanned for pointers into allocated space.  After all roots are scanned.
-2. ALLOC: 
-3. SCAN: 
-  A fixed number of node bytes are scanned for pointers and marked.
-4. SWEEP: If there are no more nodes to be scanned,
-  The stacks are scanned for references.
-  If there are still no more nodes to be scanned,
-  Begin sweeping.
-5. UNMARK: 
-A fixed number of nodes are returned to the allocated list.
-
-Allocated nodes are take from the type's WHITE list and placed on the GREY list.  During the SWEEP phase allocated nodes are moved to the GREY list to avoid accidently sweeping them, otherwise they are moved to the ECRU list for possible marking.
-
-If no WHITE nodes are available for tm_alloc(), a limited number of new WHITE nodes will be created by allocating a new block and initializing new WHITE nodes.
-
-During the SCAN phase any BLACK node that is mutated must be rescanned due to the possible introduction of new references from the BLACK node to ECRU nodes.  This is achieved by calling tm_write_barrier(P) after modifing P's contents.
-tm_write_barrier() is a nop if nodes are not being scanned
-*/
-
-/*
-
-Nodes move between the lists as follows.
-                             
-[ free (white)     ] <------------------ [ marked (black) ]
-    ^        |      \                   /       ^
-    |        |       \                 /        |
-    |        |        \               /         |
-    |        |         \             /          |
-    |        |          \           /           |
-    |        |           \         /            |
-    |        |            \       /             |
-    |        |             \     /              |
-    |        |              \   /               |
-    |        |               \ /                |
-    | SWEEP  |ALLOC           \                 | SCAN
-    |        |               / \                |
-    |        |              /   \               |
-    |        |             /     \              |
-    |        |            /       \             |
-    |        |           /         \ ALLOC      |
-    |        |          /           \           |
-    |        |         /             \          |
-    |        |        /               \         |
-    |        |       / UNMARK          \        |       
-    |        V      L                   >       |
-[ allocated (ecru) ] -----------------> [ scanned (grey) ]
-                         ROOT+SCAN
-*/
 
 static const char *tm_color_name[] = {
   "WHITE",
@@ -118,8 +43,8 @@ static const char *tm_color_name[] = {
 };
 
 static const char *tm_phase_name[] = {
-  "ROOTS",
   "ALLOC",
+  "ROOTS",
   "SCAN",
   "SWEEP",
   "UNMARK",
@@ -127,7 +52,7 @@ static const char *tm_phase_name[] = {
 };
 
 #define tm_EALL tm_ECRU
-#define tm_EALL tm_GREY
+//#define tm_EALL tm_GREY
 
 static const tm_color tm_phase_alloc[] = {
   tm_EALL,  /* ROOTS */
@@ -246,7 +171,7 @@ void _tm_assert(const char *expr, const char *file, int lineno)
 }
 #define tm_assert(X) do { if ( ! (X) ) _tm_assert(#X, __FILE__, __LINE__); } while(0)
 
-#define tm_assert_test(X) (void)0
+//#define tm_assert_test(X) (void)0
 #define tm_assert_test(X) tm_assert(X)
 
  
@@ -288,48 +213,85 @@ static void tm_add_root(const char *name, const void *_l, const void *_h)
 }
 
 
+/****************************************************************************/
+/* Phase support. */
+
 static void tm_scan_registers();
 static void tm_scan_stacks();
+
+static void __tm_write_root_ignore(void *referent);
+static void __tm_write_root_root(void *referent);
+void (*_tm_write_root)(void **refp) = __tm_write_root_ignore;
+
+static void __tm_write_barrier_ignore(void *referent);
+static void __tm_write_barrier_root(void *referent);
+static void __tm_write_barrier_scan(void *referent);
+void (*_tm_write_barrier)(void *referent) = __tm_write_barrier_ignore;
+
+static void __tm_write_barrier_pure_ignore(void *referent);
+static void __tm_write_barrier_pure_scan(void *referent);
+void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_pure_ignore;
 
 static void tm_init_phase(int p)
 {
   switch ( (tm.phase = p) ) {
+  case tm_ALLOC:
+    tm_marking = 0;
+    tm_sweeping = 0;
+
+    _tm_write_root = __tm_write_barrier_root;
+    _tm_write_barrier = __tm_write_barrier_ignore;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
+    break;
+
   case tm_ROOTS:
     tm.rooti = 2;
     tm.rp = tm.roots[tm.rooti].l;
 
-    tm_sweeping = 0;
     tm_marking = 0;
-    break;
+    tm_sweeping = 0;
 
-  case tm_ALLOC:
-    tm_sweeping = 0;
-    tm_marking = 0;
+    /* Enable root write barrier. */
+    _tm_write_root = __tm_write_root_root;
+    _tm_write_barrier = __tm_write_barrier_root;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   case tm_SCAN:
     /* Set up for marking and scanning. */
-    tm_scan_registers();
-    tm_scan_stacks();
-
     tm_node_LOOP_INIT(tm_GREY);
 
-    tm_sweeping = 0;
     tm_marking = 1;
+    tm_sweeping = 0;
+
+    /* Enable write barrier. */
+    _tm_write_root = __tm_write_root_root;
+    _tm_write_barrier = __tm_write_barrier_scan;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_scan;
     break;
 
   case tm_SWEEP:
     /* Set up for sweeping. */
     tm_node_LOOP_INIT(tm_ECRU);
+
     tm_marking = 0;
     tm_sweeping = 1;
+
+    _tm_write_root = __tm_write_root_ignore;
+    _tm_write_barrier = __tm_write_barrier_ignore;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   case tm_UNMARK:
     /* Set up for unmarking. */
     tm_node_LOOP_INIT(tm_BLACK);
+
     tm_marking = 0;
     tm_sweeping = 0;
+
+    _tm_write_root = __tm_write_root_ignore;
+    _tm_write_barrier = __tm_write_barrier_ignore;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   default:
@@ -338,11 +300,12 @@ static void tm_init_phase(int p)
   }
 
   tm_msg("p: new phase %s\n", tm_phase_name[p]);
-  if ( p == tm_SWEEP ) {
-    tm_print_stats();
+  if ( 1 || p == tm_SWEEP ) {
+    // tm_print_stats();
   }
   //tm_validate_lists();
 }
+
 
 void tm_init(int *argcp, char ***argvp, char ***envpp)
 {
@@ -383,7 +346,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   /* Global lists. */
   tm_list_init(&tm.types);
-  
+  tm_list_init(&tm.free_blocks);
+
   /* Types. */
   /* Type desc free list. */
   for ( i = 0; i < sizeof(tm.type_reserve)/sizeof(tm.type_reserve[0]); i ++ ) {
@@ -399,14 +363,14 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   }
 #endif
 
-  /* Start by marking roots. */
-  tm_init_phase(tm_ROOTS);
+  /* Start by allocating. */
+  tm_init_phase(tm_ALLOC);
 }
 
 /***************************************************************************/
 /* Node color mgmt. */
 
-#define tm_node_color(n) ((tm_color) ((n)->color))
+#define tm_node_color(n) ((tm_color) tm_list_color(n))
 
 static __inline void _tm_node_set_color(tm_node *n, tm_type *t, tm_color c)
 {
@@ -429,7 +393,7 @@ static __inline void _tm_node_set_color(tm_node *n, tm_type *t, tm_color c)
   tm_node_LOOP_INIT(c);
 #endif
 
-  n->color = c;
+  tm_list_set_color(n, c);
 }
 
 static __inline void tm_node_set_color(tm_node *n, tm_type *t, tm_color c)
@@ -454,37 +418,50 @@ tm_block *tm_alloc_block(size_t size)
   tm_block *b;
   size_t offset;
 
-  /* Force alignment to a block! */
-  b = tm_alloc_system(0);
-  offset = (unsigned long) b;
-  offset &= tm_block_SIZE - 1;
-  if ( offset ) {
-    tm_alloc_system(offset);
+  if ( (b = tm_list_take_first(&tm.free_blocks)) ) {
+    tm_msg("block: %p reused\n", (void*) b);
+  } else {
+    /* Force alignment to a block! */
+    b = tm_alloc_system(0);
+    offset = (unsigned long) b;
+    offset &= tm_block_SIZE - 1;
+    if ( offset ) {
+      tm_alloc_system(offset);
+    }
+    
+    /* Force allocation to a multiple of a block! */
+    size += tm_block_SIZE - 1;
+    size &= ~(tm_block_SIZE - 1);
+    
+    b = tm_alloc_system(size);
+    offset = (size_t) b;
+    tm_assert((offset & (tm_block_SIZE - 1)) == 0);
+    
+    /* Remember the address of the first block allocated. */
+    if ( ! tm.block_base ) {
+      tm.block_base = b;
+    }
   }
 
-  /* Force allocation to a multiple of a block! */
-  size += tm_block_SIZE - 1;
-  size &= ~(tm_block_SIZE - 1);
-  
-  b = tm_alloc_system(size);
-  offset = (size_t) b;
-  tm_assert((offset & (tm_block_SIZE - 1)) == 0);
-  
   /* Initialize. */
   tm.n[tm_B] ++;
   b->size = size;
-  b->color = tm_WHITE;
+  tm_list_set_color(b, tm_WHITE);
   b->type = 0;
   b->alloc = (char*) b + tm_block_HDR_SIZE;
   tm_list_init(&b->list);
 
-  /* Remember the address of the first block allocated. */
-  if ( ! tm.block_base ) {
-    tm.block_base = b;
-  }
-
   return b;
 }
+
+void tm_free_block(tm_block *b)
+{
+  tm_assert_test(tm.n[tm_B]);
+  tm.n[tm_B] --;
+  tm_list_remove_and_insert(&tm.free_blocks, b);
+  tm_msg("block: %p free\n", (void*) b);
+}
+
 
 static tm_block * tm_alloc_new_type_block(tm_type *t)
 {
@@ -494,7 +471,7 @@ static tm_block * tm_alloc_new_type_block(tm_type *t)
   b = tm_alloc_block(tm_block_SIZE);
 
   /* Mark it as in use. */
-  b->color = tm_ECRU;
+  tm_list_set_color(b, tm_ECRU);
 
   /* Add to type's block list. */
   b->type = t;
@@ -509,7 +486,7 @@ static tm_block * tm_alloc_new_type_block(tm_type *t)
 
 static __inline void tm_init_node(tm_node *n, tm_type *t)
 {
-  n->color = tm_WHITE;
+  tm_list_set_color(n, tm_WHITE);
   
   t->n[tm_TOTAL] ++;
   t->n[tm_WHITE] ++;
@@ -524,10 +501,9 @@ static __inline void tm_init_node(tm_node *n, tm_type *t)
   tm_msg("Init: new node %p type %p\n", (void*) n, (void*) t);
 }
 
-static __inline void tm_init_some_nodes(tm_type *t)
+static __inline void tm_init_some_nodes(tm_type *t, long left)
 {
   size_t count = 0, bytes = 0;
-  long left = tm_alloc_some_nodes_size;
   tm_block *b;
   tm_node *n = 0;
   char *pe, *end;
@@ -598,7 +574,11 @@ static __inline tm_type *tm_make_new_type(size_t size)
     }
   }
 
-  // tm_alloc_some_nodes(t);
+  /*
+  ** To avoid triggering a collection,
+  ** allocate some nodes now so the free list is not empty.
+  */
+  tm_init_some_nodes(t, tm_block_SIZE / (tm_node_HDR_SIZE + t->size));
 
   return t;
 }
@@ -635,7 +615,7 @@ static __inline tm_node *tm_pure_ptr_to_node(void *_p)
 
 static __inline void *tm_node_to_ptr(tm_node *n)
 {
-  return (void*) (n->data);
+  return (void*) (n + 1);
 }
 
 static __inline tm_node *tm_ptr_to_node(void *p)
@@ -722,7 +702,7 @@ static __inline tm_type *tm_size_to_type(size_t size)
   /* Align size to tm_ALLOC_ALIGN. */
   size = (size + (tm_ALLOC_ALIGN - 1)) & ~(tm_ALLOC_ALIGN - 1);
 
-#define POW2(i) if ( size < (1UL << i) ) size = (1UL << i); else
+#define POW2(i) if ( size <= (1UL << i) ) size = (1UL << i); else
 
   POW2(3)
   POW2(4)
@@ -834,8 +814,8 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n)
 
   switch ( tm.phase ) {
   case tm_ROOTS:
-    n[tm_M] = n[tm_ECRU];
-    n[tm_D] = n[tm_GREY] + n[tm_BLACK];
+    n[tm_M] = 0;
+    n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
     break;
 
   case tm_ALLOC:
@@ -844,18 +824,18 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n)
     break;
 
   case tm_SCAN:
-    n[tm_M] = n[tm_ECRU];
-    n[tm_D] = n[tm_GREY] + n[tm_BLACK];
+    n[tm_M] = 0;
+    n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
     break;
 
   case tm_SWEEP:
     n[tm_M] = 0;
-    n[tm_D] = n[tm_BLACK];
+    n[tm_D] = n[tm_GREY] + n[tm_BLACK];
     break;
 
   case tm_UNMARK:
     n[tm_M] = 0;
-    n[tm_D] = n[tm_ECRU] + n[tm_BLACK];
+    n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
     break;
 
   default:
@@ -887,6 +867,8 @@ void tm_print_stats()
 {
   tm_type *t;
 
+  _tm_msg_enable_table['N'] ++;
+
   tm_msg("N: types: %s { blocks %lu[%lu]: \n",
 	 tm_phase_name[tm.phase],
 	 tm.n[tm_B],
@@ -897,11 +879,13 @@ void tm_print_stats()
 
   tm_list_LOOP(&tm.types, t);
   {
-    tm_msg("N: %p s %6lu\n", (void*) t, (unsigned long) t->size, (unsigned) t->n[tm_B]);
+    tm_msg("N: %p S%-6lu\n", (void*) t, (unsigned long) t->size, (unsigned) t->n[tm_B]);
     tm_print_utilization("N: ", t, t->n);
   }
   tm_list_LOOP_END;
   tm_msg("N: }\n");
+
+  _tm_msg_enable_table['N'] --;
 
   //tm_validate_lists();
 }
@@ -911,6 +895,8 @@ void tm_print_block_stats()
   tm_type *t;
 
   tm_block *b;
+
+  _tm_msg_enable_table['N'] ++;
 
   tm_msg("N: blocks: { \n");
 
@@ -927,6 +913,8 @@ void tm_print_block_stats()
   tm_list_LOOP_END;
 
   tm_msg("N: }\n");
+
+  _tm_msg_enable_table['N'] --;
 }
 
 
@@ -936,7 +924,6 @@ void tm_print_block_stats()
 
 static int tm_mark_node(tm_node *n)
 {
-  /* Move it to the scanned list. */
   switch ( tm_node_color(n) ) {
   case tm_WHITE:
     /* Spurious pointer? */
@@ -1012,6 +999,7 @@ static void tm_scan_all_roots()
   for ( i = 0; tm.roots[i].name; i ++ ) {
     tm_scan_root_id(i);
   }
+  tm.root_mutations = 0;
   tm_msg("root: %lu marked, %lu scanned }\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
 }
 
@@ -1032,7 +1020,7 @@ static int tm_scan_some_roots()
 	tm.rooti = 2;
 	tm.rp = tm.roots[tm.rooti].l;
 	tm_msg("root: done\n");
-
+	tm.root_mutations = 0;
 	result = 0;
 	goto done;
       }
@@ -1170,7 +1158,7 @@ static int tm_check_sweep_error()
       }
       tm_list_LOOP_END;
 
-      tm_init_phase(tm_ROOTS);
+      tm_init_phase(tm_ALLOC);
       tm_assert_test(tm.n[tm_ECRU] == 0);
 
       return 1;
@@ -1248,6 +1236,49 @@ static void tm_sweep_all_nodes()
   }
 }
 
+static void tm_sweep_some_blocks()
+{
+  /* Try one block at a time. */
+
+  if ( ! tm.tb || tm.tb == &tm.types ) {
+    tm.tb = tm_list_next(&tm.types);
+    tm.bb = tm_list_next(&tm.tb->blocks);
+  } else if ( tm.bb == &tm.tb->blocks ) {
+    tm.tb = tm_list_next(tm.tb);
+    tm.bb = tm_list_next(&tm.tb->blocks);
+  }
+  
+  {
+    tm_block *b = tm.bb;
+    tm_type *t = tm.bb->type;
+    char *p;
+
+    p = b;
+    p += tm_block_HDR_SIZE;
+
+    /* Scan the block's nodes. */
+    while ( p < b->alloc ) {
+      /* Something is being used. */
+      if ( tm_node_color((tm_node*) p) != tm_WHITE ) {
+	return;
+      }
+      p += tm_node_HDR_SIZE + t->size;
+    }
+
+    /* Must be totally unused. */
+    p = b;
+    p += tm_block_HDR_SIZE;
+    while ( p < b->alloc ) {
+      tm_list_remove(p);
+      p += tm_node_HDR_SIZE + t->size;
+    }
+
+    tm.bb = tm_list_next(tm.bb);
+    tm_free_block(b);
+  }
+
+}
+
 /***************************************************************************/
 /* Unmarking */
 
@@ -1293,8 +1324,8 @@ void tm_gc_full_inner()
   tm_sweep_is_error = 0;
 
   while ( try ++ < 2 ) {
-    tm_init_phase(tm_ROOTS);
     /* Scan all roots */
+    tm_init_phase(tm_ROOTS);
     tm_scan_all_roots();
     
     /* Scan all marked nodes */
@@ -1312,10 +1343,143 @@ void tm_gc_full_inner()
     tm_unmark_all_nodes();
     tm_assert_test(tm.n[tm_BLACK] == 0);
     
-    tm_init_phase(tm_ROOTS);
+    tm_init_phase(tm_ALLOC);
   }
 
   tm_msg("gc: }\n");
+}
+
+/***************************************************************************/
+/* write barrier */
+
+/*
+** tm_root_write() should be called after modifing a root ptr.
+*/
+void tm_mark(void *ptr)
+{
+  tm_mark_possible_ptr(ptr);
+}
+
+
+void __tm_root_write_ignore(void **ptrp)
+{
+  /* DO NOTHING */
+}
+void __tm_root_write_root(void **ptrp)
+{
+  tm_mark(*ptrp);
+  tm_msg("write barrier (root): %p\n", ptr);
+}
+
+
+/*
+** tm_write_barrier(ptr) must be called before any ptrs
+** within node ptr are mutated.
+*/
+static __inline void tm_write_barrier_node(tm_node *n)
+{
+  switch ( tm_node_color(n) ) {
+  case tm_GREY:
+    /* All ready marked. */
+    break;
+
+  case tm_ECRU:
+    /* Not reached yet. */
+    break;
+
+  case tm_BLACK:
+    /*
+    ** The node has already been scanned.
+    ** The mutator may introduce new pointers.
+    ** Force it to be rescanned.
+    */
+    tm_node_set_color(n, tm_node_to_type(n), tm_GREY);
+    tm_msg("write barrier: %p\n", n);
+    break;
+
+  default:
+    tm_abort();
+    break;
+  }
+}
+
+static void __tm_write_barrier_ignore(void *ptr)
+{
+  /* DO NOTHING */
+}
+
+static void __tm_write_barrier_root(void *ptr)
+{
+  tm_assert_test(tm.phase == tm_ROOTS);
+  /* We are currently scanning roots.
+  ** Don't know if this root has been scanned yet or not.
+  */
+
+  /*
+  ** If the ptr is a reference to a stack allocated object.
+  ** Do nothing, because the stack will be scanned before
+  ** the sweep phase.
+  */
+  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h )
+    return;
+
+  /*
+  ** If the ptr is a reference to the heap. 
+  ** Do nothing, because the stack will be scanned before
+  ** the sweep phase.
+  */
+  if ( tm_ptr_l <= ptr && ptr <= tm_ptr_h )
+    return;
+
+  /*
+  ** Must be a pointer to statically allocated (root) object.
+  ** Mark the root as being.
+  */
+  tm.root_mutations ++;
+  tm_msg("write barrier (root): %p\n", ptr);
+
+}
+static void __tm_write_barrier_scan(void *ptr)
+{
+  tm_node *n;
+
+  tm_assert_test(tm.phase == tm_SCAN);
+
+  /*
+  ** If the ptr is a reference to a stack allocated object.
+  ** Do nothing, because the stack will be scanned before
+  ** the sweep phase.
+  */
+  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h )
+    return;
+
+  /*
+  ** If the ptr is a reference to a node,
+  ** Schedule it for rescanning if it has already been scanned.
+  **
+  ** If its not a reference to a node.
+  ** It must be a reference to a statically allocated object.
+  ** This means the global root set has (probably) been mutated.
+  ** We must flag the roots for rescanning before the sweep phase.
+  **
+  */
+  if ( (n = tm_ptr_to_node(ptr)) ) {
+    tm_write_barrier_node(n);
+  } else {
+    tm.root_mutations ++;
+    tm_msg("write barrier (root): %p\n", ptr);
+  }
+}
+
+static void __tm_write_barrier_pure_ignore(void *ptr)
+{
+  /* DO NOTHING */
+}
+
+static void __tm_write_barrier_pure_scan(void *ptr)
+{
+  tm_assert_test(tm.phase == tm_SCAN);
+  tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
 }
 
 /***************************************************************************/
@@ -1352,6 +1516,18 @@ static __inline void *tm_alloc_free_node(tm_type *t)
   }
 }
 
+void tm_free(void *ptr)
+{
+  tm_type *t;
+  tm_node *n;
+
+  n = tm_pure_ptr_to_node(ptr);
+  t = tm_node_to_type(n);
+
+  tm_assert(tm_node_color(n) != tm_WHITE);
+  tm_node_set_color(n, t, tm_WHITE);
+}
+
 void *tm_alloc_inner(size_t size)
 {
   tm_type *t;
@@ -1367,6 +1543,13 @@ void *tm_alloc_inner(size_t size)
   tm_alloc_pass ++;
 
   switch ( tm.phase ) {
+  case tm_ALLOC:
+    /* Keep allocating until we're out of free nodes. */
+    if ( ! t->n[tm_WHITE] ) {
+      tm.next_phase = tm_ROOTS;
+    }
+    break;
+    
   case tm_ROOTS:
     /* Scan some roots for pointers. */
     if ( ! tm_scan_some_roots() ) {
@@ -1374,25 +1557,22 @@ void *tm_alloc_inner(size_t size)
     }
     break;
     
-  case tm_ALLOC:
-    if ( ! t->n[tm_WHITE] ) {
-      tm.next_phase = tm_SCAN;
-    }
-    break;
-    
   case tm_SCAN:
     /* Scan a little bit. */
     if ( ! tm_scan_some_nodes(tm_scan_some_nodes_size) ) {
-#if 1
-      tm_scan_all_roots();
-#else
-      /* Scan registers. */
-      tm_scan_registers();
+
+      /* If the root was mutated during scan, */
+      if ( tm.root_mutations ) {
+	/* Scan all roots. */
+	tm_scan_all_roots();
+      } else {
+	/* Scan registers. */
+	tm_scan_registers();
       
-      /* Scan the stacks. */
-      tm_scan_stacks();
-#endif
-      
+	/* Scan the stacks. */
+	tm_scan_stacks();
+      }
+
       /* After scanning the registers and stack, no additional nodes were marked. */
       if ( ! tm_scan_some_nodes(tm_scan_some_nodes_size) ) {
 	tm.next_phase = tm_SWEEP;
@@ -1406,11 +1586,14 @@ void *tm_alloc_inner(size_t size)
     if ( ! tm_sweep_some_nodes(tm_sweep_some_nodes_size) ) {
       tm.next_phase = tm_UNMARK;
     }
+
+    /* Attempt to scan a block. */
+    tm_sweep_some_blocks();
     break;
     
   case tm_UNMARK:
     if ( ! tm_unmark_some_nodes(tm_unmark_some_nodes_size) ) {
-      tm.next_phase = tm_ROOTS;
+      tm.next_phase = tm_ALLOC;
     }
     break;
   }
@@ -1436,14 +1619,14 @@ void *tm_alloc_inner(size_t size)
     case tm_ALLOC:
     case tm_ROOTS:
     case tm_SCAN:
-      tm_init_some_nodes(t);
+      tm_init_some_nodes(t, tm_alloc_some_nodes_size);
       break;
 
 #if 0      
     case tm_SCAN:
       /* There's probably no garbage. */
       if ( tm_alloc_pass > 100 || t->n[tm_ECRU] < t->n[tm_TOTAL] / 2) {
-	tm_init_some_nodes(t);
+	tm_init_some_nodes(t, tm_alloc_some_nodes_size);
       } else {
 	goto try_again;
       }
@@ -1455,7 +1638,7 @@ void *tm_alloc_inner(size_t size)
       break;
     }
 #else
-    tm_init_some_nodes(t);
+    tm_init_some_nodes(t, tm_alloc_some_nodes_size);
 #endif
       
     ptr = tm_alloc_free_node(t);
@@ -1472,70 +1655,26 @@ void *tm_alloc_inner(size_t size)
   return (void*) ptr;
 }
 
+void *tm_realloc_inner(void *oldptr, size_t size)
+{
+  char *ptr = 0;
+  tm_type *t, *oldt;
+
+  oldt = tm_node_to_type(tm_pure_ptr_to_node(oldptr));
+  t = tm_size_to_type(size);
+
+  if ( oldt == t ) {
+    ptr = oldptr;
+  } else {
+    ptr = tm_alloc_inner(size);
+    memcpy(ptr, oldptr, size < oldt->size ? size : oldt->size);
+  }
+  
+  return (void*) ptr;
+}
+
 /***************************************************************************/
 /* user level routines */
-
-/*
-** tm_root_write() should be called after modifing a root ptr.
-*/
-void tm_mark(void *ptr)
-{
-  tm_mark_possible_ptr(ptr);
-}
-
-void tm_root_write(void **ptrp)
-{
-  tm_mark_possible_ptr(* ptrp);
-}
-
-/*
-** tm_write_barrier(ptr) must be called before any ptrs
-** within node ptr are mutated.
-*/
-static __inline void tm_write_barrier_node(tm_node *n)
-{
-  switch ( tm_node_color(n) ) {
-  case tm_GREY:
-    /* All ready marked. */
-    break;
-
-  case tm_ECRU:
-    /* Not reached yet. */
-    break;
-
-  case tm_BLACK:
-    /*
-    ** The node has already been scanned.
-    ** The mutator may introduce new pointers.
-    ** Force it to be rescanned.
-    */
-    tm_node_set_color(n, tm_node_to_type(n), tm_GREY);
-    tm_msg("write barrier: %p\n", n);
-    break;
-
-  default:
-    tm_abort();
-    break;
-  }
-}
-
-void _tm_write_barrier(void *ptr)
-{
-  tm_node *n;
-
-  if ( (n = tm_ptr_to_node(ptr)) )
-    tm_write_barrier_node(n);
-  else
-    tm_mark_possible_ptr(ptr);
-}
-
-void _tm_write_barrier_pure(void *ptr)
-{
-  if ( ! ptr )
-    return;
-
-  tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
-}
 
 /* Avoid garbage on the stack. */
 void _tm_clear_some_stack_words()

@@ -1,0 +1,84 @@
+$Id: README,v 1.1 1999-06-16 08:35:06 stephensk Exp $
+
+This is a real-time, non-relocating, conservative, Treadmill allocator.
+
+TM attempts to limit the amount of scanning, marking and collecting during each call to tm_alloc() to avoid stopping the world for long periods of time.
+
+Each node is allocated from a fixed block size (except for blocks that will not fit within the fixed size).
+Each node has a "color" tag describing its current allocation state:
+
+1. white: free, unused.
+2. ecru: allocated, unmarked.
+3. grey: allocated, marked, unscanned.
+4. black: allocated, marked, scanned.
+
+For each size of node, a type is created.  Each type has it's own white, ecru, grey, and black lists.  Each node lives on its type's color list.
+
+The allocator has the following phases interleaved with allocation:
+
+1. ALLOC: Allocation.            (WHITE->GREY)
+2. ROOTS: Root marking.          (ECRU->GREY)
+3. SCAN: Scan marked nodes.      (GREY->BLACK)
+4. SWEEP: Freing unmarked nodes. (ECRU->WHITE)
+5. UNMARK: Unmarking marked.     (BLACK->ECRU)
+
+During each call to tm_alloc.
+
+1. ALLOC: Allocate objects from free list until free list is empty.
+2. ROOTS: A fixed number of root bytes are scanned for pointers into allocated space.  After all roots are scanned.
+3. SCAN: 
+  A fixed number of node bytes are scanned for pointers and marked.
+4. SWEEP: If there are no more nodes to be scanned,
+  The stacks are scanned for references.
+  If there are still no more nodes to be scanned,
+  Begin sweeping.
+5. UNMARK: 
+A fixed number of nodes are returned to the allocated list.
+
+Allocated nodes are take from the type's WHITE list and placed on the GREY list.  During the SWEEP phase allocated nodes are moved to the GREY list to avoid accidently sweeping them, otherwise they are moved to the ECRU list for possible marking.
+
+If no WHITE nodes are available for tm_alloc(), a limited number of new WHITE nodes will be created by allocating a new block and initializing new WHITE nodes.
+
+During the SCAN phase any BLACK node that is mutated must be rescanned due to the possible introduction of new references from the BLACK node to ECRU nodes.  This is achieved by calling tm_write_barrier(R) after modifing R's contents.
+
+There are two versions of the write barrier:
+
+1. tm_write_barrier(R)
+2. tm_write_barrier_pure(R)
+
+tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc().  Do not use tm_write_barrier(R) if R might be an interior pointer or a pointer to a stack or statically allocated object.  Use tm_write_barrier_pure(R) if you don't know where R points to.
+If R is a global root location tm_write_barrier(R) will cause global root rescanning if the collector is in the SCAN phase.
+
+If you know you are modifing a global root ptr location.
+
+Stack pointer writes do not need to be traced, because stack scanning occurs atomically in tm_alloc().
+
+If you are entering code where the write barrier protocol is not followed you can temporarly disable incremental collection by calling tm_disable_write_barrier().  This puts the collector into a "stop-world" collection mode until tm_enable_write_barrier() is called.
+
+
+Nodes move between the lists as follows.
+                             
+[ free (white)     ] <------------------ [ marked (black) ]
+    ^        |      \                   /       ^
+    |        |       \                 /        |
+    |        |        \               /         |
+    |        |         \             /          |
+    |        |          \           /           |
+    |        |           \         /            |
+    |        |            \       /             |
+    |        |             \     /              |
+    |        |              \   /               |
+    |        |               \ /                |
+    | SWEEP  |ALLOC           \                 | SCAN
+    |        |               / \                |
+    |        |              /   \               |
+    |        |             /     \              |
+    |        |            /       \             |
+    |        |           /         \ ALLOC      |
+    |        |          /           \           |
+    |        |         /             \          |
+    |        |        /               \         |
+    |        |       / UNMARK          \        |       
+    |        V      L                   >       |
+[ allocated (ecru) ] -----------------> [ scanned (grey) ]
+                         ROOT+SCAN
