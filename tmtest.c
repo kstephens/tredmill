@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.11 2002-05-11 02:33:27 stephens Exp $ */
+/* $Id: tmtest.c,v 1.12 2003-07-28 22:50:30 stephens Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -32,6 +32,11 @@ static const char *_run_name = "<UNKNOWN>";
 #define SWEEP_IS_ERROR 0
 
 
+static void out_of_memory()
+{
+  
+}
+
 static int my_alloc_id = 1;
 static void *my_alloc(size_t size)
 {
@@ -39,8 +44,9 @@ static void *my_alloc(size_t size)
 
   ptr = tm_alloc(size);
 
-  if ( ptr == 0 ) {
+  if ( ptr == 0 && size != 0 ) {
     fprintf(stderr, "\ntmtest: %s: OUT OF MEMORY!!\n", _run_name);
+    out_of_memory();
     tm_abort();
     return 0; /* NOTREACHED */
   }
@@ -418,6 +424,8 @@ int main(int argc, char **argv, char **envp)
 {
 
   fprintf(stderr, "%s: running\n", argv[0]);
+
+  tm_alloc_os_max = 32 * 1024 * 1024;
 
   srand(0x54ae3523);
 

@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.12 2002-05-11 02:33:27 stephens Exp $ */
+/* $Id: tm.c,v 1.13 2003-07-28 22:50:30 stephens Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -18,6 +18,7 @@ long tm_node_mark_some_size = 2;
 long tm_node_sweep_some_size = 2;
 long tm_block_sweep_some_size = 2;
 long tm_node_unmark_some_size = 2;
+size_t tm_alloc_os_max = 64 * 1024 * 1024;
 int  tm_root_mark_full = 1;
 
 
@@ -965,6 +966,20 @@ static __inline void tm_node_set_color(tm_node *n, tm_block *b, tm_color c)
 /* Low-level alloc. */
 
 
+size_t tm_alloc_os_total = 0;
+
+
+static __inline
+void *tm_alloc_os_(long size)
+{
+  void *ptr;
+
+  ptr = sbrk(size);
+
+  return ptr;
+}
+
+
 static __inline
 void *tm_alloc_os(long size)
 {
@@ -974,7 +989,12 @@ void *tm_alloc_os(long size)
   tm_time_stat_begin(&tm.ts_alloc_os);
 #endif
 
-  ptr = sbrk(size);
+  /* Soft memory limit? */
+  if ( tm_alloc_os_total + size > tm_alloc_os_max ) {
+    ptr = 0;
+  } else {
+    ptr = tm_alloc_os_(size);
+  }
 
 #if tm_TIME_STAT
   tm_time_stat_end(&tm.ts_alloc_os);
@@ -990,9 +1010,13 @@ void *tm_alloc_os(long size)
   if ( size > 0 ) {
     tm_msg("A a %p[%ld]\n", ptr, (long) size);
     tm.alloc_os_expected = (char *)ptr + size;
+
+    tm_alloc_os_total += size;
   } else if ( size < 0 ) {
     tm_msg("A d %p[%ld]\n", ptr, (long) size);
     tm.alloc_os_expected += size;
+
+    tm_alloc_os_total -= size;
   }
 #if 0 
   else {
@@ -1003,6 +1027,7 @@ void *tm_alloc_os(long size)
 
   return ptr;
 }
+
 
 
 static __inline
@@ -1438,7 +1463,19 @@ static __inline tm_block *tm_ptr_to_block(char *p)
   /*
   ** A pointer directly at the end of block should be considered
   ** a pointer into the block before it.
+  **
+  ** Code like this is more common than expected:
+  
+  int *p = tm_malloc(sizeof(p[0]) * 10);
+  int i = 10;
+  while ( -- i >= 0 ) {
+    *(p ++) = i;
+    some_function_that_calls_tm_malloc(); 
+    // when i == 0, p is (just) past end of tm_malloc()ed space and a GC happens.
+    }
+    p -= 10; // p goes back, p is gone!
   */
+
   offset = (((unsigned long) p) % tm_block_SIZE);
   b = p - offset;
   if ( offset == 0 ) {
@@ -2459,6 +2496,45 @@ static void tm_node_unmark_all()
 
 /***************************************************************************/
 /* Full GC. */
+
+
+void tm_gc_full_inner_type(tm_type *type)
+{
+  int try = 0;
+
+  tm_msg("gc {\n");
+
+  tm_sweep_is_error = 0;
+
+  while ( try ++ < 2 ) {
+    /* Mark all roots. */
+    tm_phase_init(tm_ROOT);
+    tm_root_mark_all();
+    
+    /* Mark all scheduled nodes. */
+    tm_phase_init(tm_MARK);
+    tm_node_mark_all();
+    tm_assert_test(tm.n[tm_GREY] == 0);
+    
+    /* Sweep the nodes. */
+    tm_phase_init(tm_SWEEP);
+    tm_nodes_sweep_all();
+    tm_assert_test(tm.n[tm_ECRU] == 0);
+    
+    /* Unmark the nodes. */
+    tm_phase_init(tm_UNMARK);
+    tm_node_unmark_all();
+    tm_assert_test(tm.n[tm_BLACK] == 0);
+
+    /* Sweep some blocks? */
+    while ( tm_block_sweep_some() ) {
+    }
+
+    tm_phase_init(tm_ALLOC);
+  }
+
+  tm_msg("gc }\n");
+}
 
 
 void tm_gc_full_inner()

@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.9 2002-05-11 02:33:27 stephens Exp $ */
+/* $Id: internal.h,v 1.10 2003-07-28 22:50:30 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -12,7 +12,7 @@
 
 #include <limits.h>
 #ifndef PAGESIZE
-#define PAGESIZE 4096
+#define PAGESIZE (1 << 13)
 #endif
 
 

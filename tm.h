@@ -1,4 +1,4 @@
-/* $Id: tm.h,v 1.7 2000-01-13 11:19:01 stephensk Exp $ */
+/* $Id: tm.h,v 1.8 2003-07-28 22:50:30 stephens Exp $ */
 #ifndef _tredmill_tm_h
 #define _tredmill_tm_h
 
@@ -94,6 +94,7 @@ extern long tm_node_scan_some_size;
 extern long tm_node_sweep_some_size;
 extern long tm_block_sweep_some_size;
 extern long tm_node_unmark_some_size;
+extern size_t tm_alloc_os_max;
 extern unsigned long tm_alloc_id;
 
 /*******************************************************************************/
