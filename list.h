@@ -1,13 +1,13 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
-/* $Id: list.h,v 1.4 1999-06-28 13:58:22 stephensk Exp $ */
+/* $Id: list.h,v 1.5 1999-12-28 20:42:16 stephensk Exp $ */
 
 /****************************************************************************/
 
 typedef struct tm_list {
   struct tm_list *_next;
-  unsigned _prev : 30;
+  unsigned _prev : 30; /* Hide color in lower 2 bits of prev ptr. */
   unsigned _color : 2;
 } tm_list;
 

@@ -4,6 +4,8 @@
 #break tm_add_root
 #break tm_write_barrier
 #break __assert
+#break tm_sweep_some_blocks
+#break tm_alloc_os
 break tm_abort
 break tm_fatal
 break tm_stop

@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.4 1999-06-28 13:58:20 stephensk Exp $
+# $Id: Makefile,v 1.5 1999-12-28 20:42:15 stephensk Exp $
 
 INCLS += ..
 
@@ -31,4 +31,6 @@ include $(MAKS)/tool.mak
 include $(MAKS)/basic.mak
 
 #################################################################
+
+$(O_FILES) : $(H_FILES)
 
