@@ -1,4 +1,4 @@
-$Id: README,v 1.1 1999-06-16 08:35:06 stephensk Exp $
+$Id: README,v 1.2 1999-09-09 04:57:11 stephensk Exp $
 
 This is a real-time, non-relocating, conservative, Treadmill allocator.
 
@@ -46,7 +46,7 @@ There are two versions of the write barrier:
 1. tm_write_barrier(R)
 2. tm_write_barrier_pure(R)
 
-tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc().  Do not use tm_write_barrier(R) if R might be an interior pointer or a pointer to a stack or statically allocated object.  Use tm_write_barrier_pure(R) if you don't know where R points to.
+tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc().  Do not use tm_write_barrier(R) if R might be an interior pointer or a pointer to a stack or statically allocated object.  Use tm_write_barrier(R) if you don't know where R points to.
 If R is a global root location tm_write_barrier(R) will cause global root rescanning if the collector is in the SCAN phase.
 
 If you know you are modifing a global root ptr location.
@@ -82,3 +82,6 @@ Nodes move between the lists as follows.
     |        V      L                   >       |
 [ allocated (ecru) ] -----------------> [ scanned (grey) ]
                          ROOT+SCAN
+
+
+

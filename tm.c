@@ -1,4 +1,5 @@
-/* $Id: tm.c,v 1.4 1999-06-28 13:58:24 stephensk Exp $ */
+/* $Id: tm.c,v 1.5 1999-09-09 04:57:13 stephensk Exp $ */
+
 #include "tm.h"
 #include "internal.h"
 #include <stdio.h>
@@ -27,11 +28,11 @@ static const char *_tm_msg_enable = "bwtNFg*";
 /****************************************************************************/
 
 static const char *tm_color_name[] = {
-  "WHITE",
-  "ECRU",
-  "GREY",
-  "BLACK",
-  "TOTAL",
+  "WHITE", /* tm_WHITE */
+  "ECRU",  /* tm_ECRU */
+  "GREY",  /* tm_GREY */
+  "BLACK", /* tm_BLACK */
+  "TOTAL", /* tm_TOTAL */
   "b",
   "D",
   "d",
@@ -43,29 +44,59 @@ static const char *tm_color_name[] = {
 };
 
 static const char *tm_phase_name[] = {
-  "ALLOC",
-  "ROOTS",
-  "SCAN",
-  "SWEEP",
-  "UNMARK",
+  "ALLOC",  /* tm_ALLOC */
+  "ROOTS",  /* tm_ROOTS */
+  "SCAN",   /* tm_SCAN */
+  "SWEEP",  /* tm_SWEEP */
+  "UNMARK", /* tm_UNMARK */
   0
 };
 
+
+/**************************************************************************/
+
+#if 1
+ /*
+ ** Default allocated nodes to "not marked".
+ ** Rational: some are allocated but thrown away early.
+ */
 #define tm_EALL tm_ECRU
-//#define tm_EALL tm_GREY
+#else
+ /*
+ ** Default allocated nodes to "marked, not scanned".
+ ** Rational: they are allocated because they are to be used (referred to).
+ */
+#define tm_EALL tm_GREY
+#endif
+
+/*
+This table defines what color a newly allocated node
+should be during the current allocation phase.
+
+All phases except the SWEEP phase move newly allocated nodes
+from WHITE to ECRU.
+The SWEEP phase moves newly allocated nodes
+from WHITE to BLACK, because, the ECRU lists are considered to be 
+unmarked garbage and the BLACK lists are considered to
+be marked and scanned during the SWEEP phase.
+*/
 
 static const tm_color tm_phase_alloc[] = {
-  tm_EALL,  /* ROOTS */
-  tm_EALL,  /* ALLOC */
-  tm_EALL,  /* SCAN */
-  tm_BLACK, /* SWEEP */
-  tm_EALL   /* UNMARK */
+  tm_EALL,  /* tm_ALLOC */
+  tm_EALL,  /* tm_ROOTS */
+  tm_EALL,  /* tm_SCAN */
+  tm_BLACK, /* tm_SWEEP */
+  tm_EALL   /* tm_UNMARK */
 };
 
+#undef tm_EALL
+
+/**************************************************************************/
+/* Global allocator data */
 
 struct tm_data tm;
 
-
+/**************************************************************************/
 /* Global color list iterators. */
 
 #define tm_node_LOOP_INIT(C) \
@@ -105,16 +136,20 @@ void tm_msg(const char *format, ...)
 {
   va_list vap;
 
+  /* Determine if we need to ignore the msg based on the first char in the format. */
   if ( (_tm_msg_ignored = ! _tm_msg_enable_table[(unsigned char) format[0]]) )
     return;
 
+  /* Default tm_msg_file. */
   if ( ! tm_msg_file )
     tm_msg_file = stdout;
 
+  /* Print header. */
   fprintf(tm_msg_file, "tm: %3lu: ", tm_alloc_id);
   if ( tm_alloc_pass > 1 )
     fprintf(tm_msg_file, "(pass %lu): ", tm_alloc_pass);
 
+  /* Print msg. */
   va_start(vap, format);
   vfprintf(tm_msg_file, format, vap);
   va_end(vap);
@@ -126,6 +161,7 @@ void tm_msg1(const char *format, ...)
 {
   va_list vap;
 
+  /* Don't bother if last msg was ignored. */
   if ( _tm_msg_ignored )
     return;
 
@@ -135,6 +171,7 @@ void tm_msg1(const char *format, ...)
 }
 
 /****************************************************************************/
+/* Generalize error handling. */
 
 void tm_stop()
 {
@@ -178,12 +215,12 @@ void _tm_assert(const char *expr, const char *file, int lineno)
 /****************************************************************************/
 /* Init. */
 
-extern int _data_start__, _data_end__, _bss_start__, _bss_end__;
-
 static void _tm_add_root(const char *name, const void *l, const void *h)
 {
   if ( l >= h )
     return;
+
+  tm_assert(tm.nroots < sizeof(tm.roots)/sizeof(tm.roots[0]));
 
   tm.roots[tm.nroots].name = name;
   tm.roots[tm.nroots].l = l;
@@ -197,6 +234,7 @@ static void tm_add_root(const char *name, const void *_l, const void *_h)
   const void *l = _l, *h = _h;
   const void *tm_l, *tm_h;
 
+  /* Adjust range to avoid internal tm data. */
   tm_l = &tm;
   tm_h = (&tm) + 1;
 
@@ -221,16 +259,28 @@ static void tm_scan_stacks();
 
 static void __tm_write_root_ignore(void **referentp);
 static void __tm_write_root_root(void **referentp);
+static void __tm_write_root_scan(void **referentp);
+static void __tm_write_root_sweep(void **referentp);
 void (*_tm_write_root)(void **refp) = __tm_write_root_ignore;
 
 static void __tm_write_barrier_ignore(void *referent);
 static void __tm_write_barrier_root(void *referent);
 static void __tm_write_barrier_scan(void *referent);
+static void __tm_write_barrier_sweep(void *referent);
 void (*_tm_write_barrier)(void *referent) = __tm_write_barrier_ignore;
 
 static void __tm_write_barrier_pure_ignore(void *referent);
+static void __tm_write_barrier_pure_root(void *referent);
 static void __tm_write_barrier_pure_scan(void *referent);
+static void __tm_write_barrier_pure_sweep(void *referent);
 void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_pure_ignore;
+
+static void tm_init_root_loop()
+{
+  tm.rooti = 2;
+  tm.rp = tm.roots[tm.rooti].l;
+  tm.global_mutations = tm.stack_mutations = 0;
+}
 
 static void tm_init_phase(int p)
 {
@@ -239,56 +289,61 @@ static void tm_init_phase(int p)
     tm_marking = 0;
     tm_sweeping = 0;
 
+    /* Write barrier. */
     _tm_write_root = __tm_write_root_ignore;
     _tm_write_barrier = __tm_write_barrier_ignore;
     _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   case tm_ROOTS:
-    tm.rooti = 2;
-    tm.rp = tm.roots[tm.rooti].l;
-
     tm_marking = 0;
     tm_sweeping = 0;
 
-    /* Enable root write barrier. */
+    /* Initialize root mark loop. */
+    tm_init_root_loop();
+
+    /* Write barrier. */
     _tm_write_root = __tm_write_root_root;
     _tm_write_barrier = __tm_write_barrier_root;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_root;
     break;
 
   case tm_SCAN:
-    /* Set up for marking and scanning. */
-    tm_node_LOOP_INIT(tm_GREY);
-
     tm_marking = 1;
     tm_sweeping = 0;
 
-    /* Enable write barrier. */
-    _tm_write_root = __tm_write_root_root;
+    tm.stack_mutations = tm.global_mutations = 0;
+
+    /* Set up for marking and scanning. */
+    tm_node_LOOP_INIT(tm_GREY);
+
+    /* Write barrier. */
+    _tm_write_root = __tm_write_root_scan;
     _tm_write_barrier = __tm_write_barrier_scan;
     _tm_write_barrier_pure = __tm_write_barrier_pure_scan;
     break;
 
   case tm_SWEEP:
-    /* Set up for sweeping. */
-    tm_node_LOOP_INIT(tm_ECRU);
-
     tm_marking = 0;
     tm_sweeping = 1;
 
-    _tm_write_root = __tm_write_root_ignore;
-    _tm_write_barrier = __tm_write_barrier_ignore;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
+    /* Set up for sweeping. */
+    tm_node_LOOP_INIT(tm_ECRU);
+
+    /* Write barrier. */
+    _tm_write_root = __tm_write_root_sweep;
+    _tm_write_barrier = __tm_write_barrier_sweep;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_sweep;
     break;
 
   case tm_UNMARK:
-    /* Set up for unmarking. */
-    tm_node_LOOP_INIT(tm_BLACK);
-
     tm_marking = 0;
     tm_sweeping = 0;
 
+    /* Set up for unmarking. */
+    tm_node_LOOP_INIT(tm_BLACK);
+
+    /* Write barrier. */
     _tm_write_root = __tm_write_root_ignore;
     _tm_write_barrier = __tm_write_barrier_ignore;
     _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
@@ -336,19 +391,28 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   /* Roots. */
   tm.nroots = 0;
   _tm_add_root("registers", tm.jb, (&tm.jb) + 1);
+
   _tm_add_root("stack", &i, envpp);
-  tm_add_root("initialized data", &_data_start__, &_data_end__);
-  tm_add_root("uninitialized data", &_bss_start__, &_bss_end__);
+  /* IMPLEMENT: Support for multithreading stacks. */
+
+  {
+    extern int _data_start__, _data_end__, _bss_start__, _bss_end__;
+
+    tm_add_root("initialized data", &_data_start__, &_data_end__);
+    tm_add_root("uninitialized data", &_bss_start__, &_bss_end__);
+
+  }
+  /* IMPLEMENT: Support dynamically-loaded libraries data segments. */
 
   /* Root scanning. */
-  tm.rooti = 2;
-  tm.rp = tm.roots[tm.rooti].l;
+  tm_init_root_loop();
 
   /* Global lists. */
   tm_list_init(&tm.types);
   tm_list_init(&tm.free_blocks);
 
   /* Types. */
+
   /* Type desc free list. */
   for ( i = 0; i < sizeof(tm.type_reserve)/sizeof(tm.type_reserve[0]); i ++ ) {
     tm_type *t = &tm.type_reserve[i];
@@ -380,7 +444,7 @@ static __inline void _tm_node_set_color(tm_node *n, tm_type *t, tm_color c)
   tm.n[tm_node_color(n)] --;
   tm.n[c] ++;
 
-  // tm_alloc() stats.
+  /* tm_alloc() stats. */
   tm.alloc_n[c] ++;
   tm.alloc_n[tm_TOTAL] ++;
 
@@ -534,7 +598,9 @@ static __inline void tm_init_some_nodes(tm_type *t, long left)
   done:
   } while ( ! count );
 
-  if ( count ) tm_msg("init: %lu nodes, %lu bytes, %lu free\n", count, bytes, t->n[tm_WHITE]);
+  if ( count )
+    tm_msg("init: %lu nodes, %lu bytes, %lu free\n", count, bytes, t->n[tm_WHITE]);
+
   tm_assert_test(t->n[tm_WHITE]);
 }
 
@@ -544,7 +610,7 @@ static __inline tm_type *tm_make_new_type(size_t size)
 
   /* Allocate new type desc. */
 
-  /* Take from free list */
+  /* Take from free list. */
   if ( tm.type_free ) {
     t = tm.type_free;
     tm.type_free = t->hash_next;
@@ -702,6 +768,7 @@ static __inline tm_type *tm_size_to_type(size_t size)
   /* Align size to tm_ALLOC_ALIGN. */
   size = (size + (tm_ALLOC_ALIGN - 1)) & ~(tm_ALLOC_ALIGN - 1);
 
+  /* Align size to power of two. */
 #define POW2(i) if ( size <= (1UL << i) ) size = (1UL << i); else
 
   POW2(3)
@@ -722,7 +789,7 @@ static __inline tm_type *tm_size_to_type(size_t size)
 
 #undef POW2
 
-  /* We don't support big allocs yet. */
+  /* IMPLEMENT: support for big allocs. */
   tm_assert(size <= tm_block_SIZE_MAX);
 
   /* Compute hash bucket index. */
@@ -742,6 +809,7 @@ static __inline tm_type *tm_size_to_type(size_t size)
     }
   }
 
+  /* If a type was not found, create a new one. */
   if ( ! t ) {
     t = tm_make_new_type(size);
 
@@ -813,12 +881,12 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n)
   tm_msg(name);
 
   switch ( tm.phase ) {
-  case tm_ROOTS:
+  case tm_ALLOC:
     n[tm_M] = 0;
     n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
     break;
 
-  case tm_ALLOC:
+  case tm_ROOTS:
     n[tm_M] = 0;
     n[tm_D] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
     break;
@@ -842,7 +910,7 @@ static void tm_print_utilization(const char *name, tm_type *t, size_t *n)
     tm_abort();
   }
 
-  /* Definitaly used. */
+  /* Definitely used. */
   n[tm_PD] = n[tm_TOTAL] ? n[tm_D] * 100 / n[tm_TOTAL] : 0;
 
   /* Maybe used. */
@@ -939,7 +1007,7 @@ static int tm_mark_node(tm_node *n)
     break;
     
   case tm_GREY:
-    /* The node has been sceduled for scanning. */
+    /* The node has been scheduled for scanning. */
     break;
     
   case tm_BLACK:
@@ -999,7 +1067,7 @@ static void tm_scan_all_roots()
   for ( i = 0; tm.roots[i].name; i ++ ) {
     tm_scan_root_id(i);
   }
-  tm.root_mutations = 0;
+  tm_init_root_loop();
   tm_msg("root: %lu marked, %lu scanned }\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
 }
 
@@ -1017,10 +1085,8 @@ static int tm_scan_some_roots()
     while ( (void*) (tm.rp + sizeof(void*)) >= tm.roots[tm.rooti].h ) {
       tm.rooti ++;
       if ( ! tm.roots[tm.rooti].name ) {
-	tm.rooti = 2;
-	tm.rp = tm.roots[tm.rooti].l;
+	tm_init_root_loop();
 	tm_msg("root: done\n");
-	tm.root_mutations = 0;
 	result = 0;
 	goto done;
       }
@@ -1092,7 +1158,9 @@ static size_t tm_scan_some_nodes(long left)
     tm_node_LOOP_END(tm_GREY);
   }
 
-  if ( count ) tm_msg("Scan: %lu nodes, %lu bytes, %lu left\n", count, bytes, tm.n[tm_GREY]);
+  if ( count )
+    tm_msg("Scan: %lu nodes, %lu bytes, %lu left\n", count, bytes, tm.n[tm_GREY]);
+
   return tm.n[tm_GREY];
 }
 
@@ -1108,7 +1176,9 @@ static void tm_scan_all_nodes()
 /***************************************************************************/
 /* Sweeping */
 
+#ifndef tm_sweep_is_error
 int tm_sweep_is_error = 0;
+#endif
 
 static int tm_check_sweep_error()
 {
@@ -1196,7 +1266,9 @@ static long tm_sweep_some_nodes(long left)
     tm_node_LOOP_END(tm_ECRU);
   }
 
-  if ( count ) tm_msg("sweep: %lu nodes, %lu bytes, %lu left\n", count, bytes, tm.n[tm_ECRU]);
+  if ( count ) 
+    tm_msg("sweep: %lu nodes, %lu bytes, %lu left\n", count, bytes, tm.n[tm_ECRU]);
+
   return tm.n[tm_ECRU];
 }
 
@@ -1224,7 +1296,9 @@ static size_t tm_sweep_some_nodes_for_type(tm_type *t)
 
   }
 
-  if ( count ) tm_msg("sweep: type %p: %lu nodes, %lu bytes, %lu left\n", t, count, bytes, tm.n[tm_ECRU]);
+  if ( count ) 
+    tm_msg("sweep: type %p: %lu nodes, %lu bytes, %lu left\n", t, count, bytes, tm.n[tm_ECRU]);
+
   return tm.n[tm_ECRU];
 }
 
@@ -1240,10 +1314,10 @@ static void tm_sweep_some_blocks()
 {
   /* Try one block at a time. */
 
-  if ( ! tm.tb || tm.tb == &tm.types ) {
+  if ( ! tm.tb || (void*) tm.tb == (void*) &tm.types ) {
     tm.tb = tm_list_next(&tm.types);
     tm.bb = tm_list_next(&tm.tb->blocks);
-  } else if ( tm.bb == &tm.tb->blocks ) {
+  } else if ( (void*) tm.bb == (void*) &tm.tb->blocks ) {
     tm.tb = tm_list_next(tm.tb);
     tm.bb = tm_list_next(&tm.tb->blocks);
   }
@@ -1253,7 +1327,7 @@ static void tm_sweep_some_blocks()
     tm_type *t = tm.bb->type;
     char *p;
 
-    p = b;
+    p = (void*) b;
     p += tm_block_HDR_SIZE;
 
     /* Scan the block's nodes. */
@@ -1266,7 +1340,7 @@ static void tm_sweep_some_blocks()
     }
 
     /* Must be totally unused. */
-    p = b;
+    p = (void*) b;
     p += tm_block_HDR_SIZE;
     while ( p < b->alloc ) {
       tm_list_remove(p);
@@ -1300,7 +1374,9 @@ static size_t tm_unmark_some_nodes(long left)
     tm_node_LOOP_END(tm_BLACK);
   }
 
-  if ( count ) tm_msg("unmark: %lu nodes, %lu bytes, %lu left\n", count, bytes, tm.n[tm_BLACK]);
+  if ( count ) 
+    tm_msg("unmark: %lu nodes, %lu bytes, %lu left\n", count, bytes, tm.n[tm_BLACK]);
+
   return tm.n[tm_BLACK];
 }
 
@@ -1361,20 +1437,36 @@ void tm_mark(void *ptr)
 }
 
 
-void __tm_write_root_ignore(void **ptrp)
+static void __tm_write_root_ignore(void **ptrp)
 {
   /* DO NOTHING */
 }
-void __tm_write_root_root(void **ptrp)
+
+static void __tm_write_root_root(void **ptrp)
 {
   tm_mark(*ptrp);
   tm_msg("write root: %p\n", *ptrp);
 }
 
+static void __tm_write_root_scan(void **ptrp)
+{
+  tm_mark(*ptrp);
+  tm_msg("write root: %p\n", *ptrp);
+}
+
+static void __tm_write_root_sweep(void **ptrp)
+{
+  /*
+  ** Force allocater back to ROOT phase.
+  */
+  tm.global_mutations ++;
+  tm_msg("write root: %p\n", *ptrp);
+}
+
 
 /*
-** tm_write_barrier(ptr) must be called before any ptrs
-** within node ptr are mutated.
+** tm_write_barrier(ptr) must be called after any ptrs
+** within the node n are mutated.
 */
 static __inline void tm_write_barrier_node(tm_node *n)
 {
@@ -1410,34 +1502,35 @@ static void __tm_write_barrier_ignore(void *ptr)
 
 static void __tm_write_barrier_root(void *ptr)
 {
-  /* We are currently scanning roots.
+  /* Currently scanning roots.
   ** Don't know if this root has been scanned yet or not.
   */
 
   /*
-  ** If the ptr is a reference to a stack allocated object.
-  ** Do nothing, because the stack will be scanned before
+  ** If the ptr is a reference to a stack allocated object,
+  ** do nothing, because the stack will be scanned atomically before
   ** the sweep phase.
   */
-  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h )
+  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
     return;
+  }
 
   /*
   ** If the ptr is a reference to the heap. 
-  ** Do nothing, because the stack will be scanned before
-  ** the sweep phase.
+  ** Do nothing, because we haven't started scanning yet.
   */
   if ( tm_ptr_l <= ptr && ptr <= tm_ptr_h )
     return;
 
   /*
   ** Must be a pointer to statically allocated (root) object.
-  ** Mark the root as being.
+  ** Mark the root as being mutated.
   */
-  tm.root_mutations ++;
+  tm.global_mutations ++;
   tm_msg("write root: %p\n", ptr);
 
 }
+
 static void __tm_write_barrier_scan(void *ptr)
 {
   tm_node *n;
@@ -1445,27 +1538,63 @@ static void __tm_write_barrier_scan(void *ptr)
   tm_assert_test(tm.phase == tm_SCAN);
 
   /*
-  ** If the ptr is a reference to a stack allocated object.
-  ** Do nothing, because the stack will be scanned before
+  ** If the ptr is a reference to a stack allocated object,
+  ** do nothing, because the stack will be scanned before
   ** the sweep phase.
   */
-  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h )
+  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
+    tm.stack_mutations ++;
     return;
+  }
 
   /*
   ** If the ptr is a reference to a node,
-  ** Schedule it for rescanning if it has already been scanned.
+  ** schedule it for rescanning if it has already been scanned.
   **
   ** If its not a reference to a node.
   ** It must be a reference to a statically allocated object.
   ** This means the global root set has (probably) been mutated.
-  ** We must flag the roots for rescanning before the sweep phase.
+  ** Must flag the roots for rescanning before the sweep phase.
   **
   */
   if ( (n = tm_ptr_to_node(ptr)) ) {
     tm_write_barrier_node(n);
   } else {
-    tm.root_mutations ++;
+    tm.global_mutations ++;
+    tm_msg("write root: %p\n", ptr);
+  }
+}
+
+static void __tm_write_barrier_sweep(void *ptr)
+{
+  tm_node *n;
+
+  tm_assert_test(tm.phase == tm_SWEEP);
+
+  /*
+  ** If the ptr is a reference to a stack allocated object,
+  ** do nothing, because the stack will be scanned before
+  ** the sweep phase.
+  */
+  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
+    tm.stack_mutations ++;
+    return;
+  }
+
+  /*
+  ** If the ptr is a reference to a node,
+  ** schedule it for rescanning if it has already been scanned.
+  **
+  ** If its not a reference to a node,
+  ** it must be a reference to a statically allocated object.
+  ** This means the global root set has (probably) been mutated.
+  ** Must flag the roots for rescanning before the sweep phase.
+  **
+  */
+  if ( (n = tm_ptr_to_node(ptr)) ) {
+    tm_write_barrier_node(n);
+  } else {
+    tm.global_mutations ++;
     tm_msg("write root: %p\n", ptr);
   }
 }
@@ -1475,9 +1604,20 @@ static void __tm_write_barrier_pure_ignore(void *ptr)
   /* DO NOTHING */
 }
 
+static void __tm_write_barrier_pure_root(void *ptr)
+{
+  /* DO NOTHING */
+}
+
 static void __tm_write_barrier_pure_scan(void *ptr)
 {
   tm_assert_test(tm.phase == tm_SCAN);
+  tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
+}
+
+static void __tm_write_barrier_pure_sweep(void *ptr)
+{
+  tm_assert_test(tm.phase == tm_SWEEP);
   tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
 }
 
@@ -1499,6 +1639,7 @@ static __inline void *tm_alloc_free_node(tm_type *t)
 
     memset(ptr, 0, t->size);
     
+    /* Update valid ptr range. */
     if ( tm_ptr_l > (void*) ptr ) {
       tm_ptr_l = ptr;
     }
@@ -1539,11 +1680,12 @@ void *tm_alloc_inner(size_t size)
   t = tm_size_to_type(size);
 
   tm.next_phase = -1;
-  tm_alloc_pass ++;
 
+ try_again:
+  tm_alloc_pass ++;
   switch ( tm.phase ) {
   case tm_ALLOC:
-    /* Keep allocating until we're out of free nodes. */
+    /* Keep allocating until out of free nodes. */
     if ( ! t->n[tm_WHITE] ) {
       tm.next_phase = tm_ROOTS;
     }
@@ -1557,11 +1699,17 @@ void *tm_alloc_inner(size_t size)
     break;
     
   case tm_SCAN:
+  scan:
     /* Scan a little bit. */
     if ( ! tm_scan_some_nodes(tm_scan_some_nodes_size) ) {
 
-      /* If the root was mutated during scan, */
-      if ( tm.root_mutations ) {
+      /* 
+      ** If the roots were mutated during scan,
+      ** scan all roots.
+      ** Rationale: A reference to a new node may have been
+      ** copied from the unscanned stack to a global root.
+      */
+      if ( tm.global_mutations || tm.stack_mutations ) {
 	/* Scan all roots. */
 	tm_scan_all_roots();
       } else {
@@ -1572,7 +1720,11 @@ void *tm_alloc_inner(size_t size)
 	tm_scan_stacks();
       }
 
-      /* After scanning the registers and stack, no additional nodes were marked. */
+      /* 
+      ** If after scanning the registers and stack,
+      ** no additional nodes were marked,
+      ** begin sweeping.
+      */
       if ( ! tm_scan_some_nodes(tm_scan_some_nodes_size) ) {
 	tm.next_phase = tm_SWEEP;
       }
@@ -1580,14 +1732,48 @@ void *tm_alloc_inner(size_t size)
     break;
     
   case tm_SWEEP:
-    /* Try to immediately sweep nodes for the type we want first. */
-    tm_sweep_some_nodes_for_type(t);
-    if ( ! tm_sweep_some_nodes(tm_sweep_some_nodes_size) ) {
-      tm.next_phase = tm_UNMARK;
-    }
+#if 0
+    /*
+    ** If there were some root mutations during sweep, 
+    ** go back to scanning roots.
+    ** Rationale: A reference to a new node may have
+    ** been copied from the unscanned stack to a global root.
+    */
+    if ( tm.stack_mutations ) {
+      tm.stack_mutations = 0;
+      tm_scan_registers();
+      tm_scan_stacks();
+      tm_msg("Root: stack mutation during SWEEP, scanning stacks and going back to SCAN phase.\n");
+      tm.next_phase = tm_SCAN;
+      tm_init_phase(tm.next_phase);
+      goto scan;
+    } else
+    if ( tm.global_mutations ) {
+      tm.global_mutations = 0;
+      tm_scan_all_roots();
+      tm_msg("Root: global mutation during SWEEP, scanning all roots and going back to SCAN phase.\n");
+      tm.next_phase = tm_SCAN;
+      tm_init_phase(tm.next_phase);
+      goto scan;
+    } else
+#else
+      /* 
+      ** Don't bother rescanning after root mutations
+      ** because all newly allocated objects are marked "in use" during SWEEP.
+      ** See tm_phase_alloc.
+      */
+#endif
+ {
 
-    /* Attempt to scan a block. */
-    tm_sweep_some_blocks();
+      /* Try to immediately sweep nodes for the type we want first. */
+      tm_sweep_some_nodes_for_type(t);
+      if ( ! tm_sweep_some_nodes(tm_sweep_some_nodes_size) ) {
+	tm.next_phase = tm_UNMARK;
+      }
+
+      /* Attempt to sweep some blocks. */
+      tm_sweep_some_blocks();
+    }
     break;
     
   case tm_UNMARK:
@@ -1644,6 +1830,7 @@ void *tm_alloc_inner(size_t size)
     tm_assert_test(ptr);
   }
   
+  /* Switch to new phase. */
   if ( tm.next_phase >= 0 )
     tm_init_phase(tm.next_phase);
 
@@ -1675,11 +1862,11 @@ void *tm_realloc_inner(void *oldptr, size_t size)
 /***************************************************************************/
 /* user level routines */
 
-/* Avoid garbage on the stack. */
+/* Avoid leaving garbage on the stack. */
 void _tm_clear_some_stack_words()
 {
-  int zero[16];
-  memset(zero, 0, sizeof(zero));
+  int some_words[64];
+  memset(some_words, 0, sizeof(some_words));
 }
 
 /***************************************************************************/

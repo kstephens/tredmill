@@ -130,8 +130,9 @@ struct tm_data {
   int rooti;
   const char *rp;
 
-  /* How many global root mutations happened during SCAN. */
-  unsigned long root_mutations;
+  /* How many root mutations happened since the ROOT phase. */
+  unsigned long global_mutations;
+  unsigned long stack_mutations;
 
   /* Register roots. */
   jmp_buf jb;

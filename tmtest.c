@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.3 1999-06-16 08:35:07 stephensk Exp $ */
+/* $Id: tmtest.c,v 1.4 1999-09-09 04:57:14 stephensk Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -305,4 +305,5 @@ int main(int argc, char **argv, char **envp)
 
   return 0;
 }
+
 
