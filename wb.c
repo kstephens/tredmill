@@ -1,4 +1,4 @@
-/* $Id: wb.c,v 1.2 2000-01-07 09:40:40 stephensk Exp $ */
+/* $Id: wb.c,v 1.3 2008-01-14 00:08:02 stephens Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +13,9 @@
 /*********************************************************************/
 /* Configuration */
 
+/*
 #define MAX_ADDR_SPACE tm_PTR_RANGE
+*/
 
 #ifndef MAX_ADDR_SPACE
 #define MAX_ADDR_SPACE (512 * 1024 * 1024) /* 512Mb */

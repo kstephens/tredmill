@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.10 2003-07-28 22:50:30 stephens Exp $ */
+/* $Id: internal.h,v 1.11 2008-01-14 00:08:02 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -10,11 +10,17 @@
 #include <setjmp.h>
 #include "list.h"
 
+#include "tredmill/debug.h"
+#include "tredmill/barrier.h"
+
 #include <limits.h>
 #ifndef PAGESIZE
-#define PAGESIZE (1 << 13)
+#define PAGESIZE (1 << 13) /* 8192 */
 #endif
 
+#ifndef tm_PAGESIZE
+#define tm_PAGESIZE PAGESIZE
+#endif
 
 /****************************************************************************/
 /* Color */
@@ -61,8 +67,12 @@ typedef enum tm_color {
 /* Node */
 
 typedef struct tm_node {
-  tm_list list;         /* The current list for the node. */
+  /* The current list for the node. */
+  tm_list list;         /* tm_type.l[tm_node_color(this)] list */
 } tm_node;
+
+#define tm_node_color(n) ((tm_color) tm_list_color(n))
+
 
 /****************************************************************************/
 /*
@@ -78,7 +88,7 @@ typedef struct tm_node {
 #endif
 
 typedef struct tm_block {
-  tm_list list;         /* Type's block list */
+  tm_list list;         /* tm_type.block list */
 
 #if tm_block_GUARD
   unsigned long guard1;
@@ -96,23 +106,35 @@ typedef struct tm_block {
   char *alloc;          /* The allocation pointer for new tm_nodes. */
   size_t n[tm__LAST];   /* Total nodes for this block. */
 
-  double alignment;     /* Force alignment to double. */
-
 #if tm_block_GUARD
   unsigned long guard2;
 #endif
 
+  double alignment;     /* Force alignment to double. */
+
 } tm_block;
 
+#define tm_block_unused(b) ((b)->n[tm_WHITE] == b->n[tm_TOTAL])
 #define tm_block_node_begin(b) ((void*) (b)->begin)
 #define tm_block_node_end(b) ((void*) (b)->end)
 #define tm_block_node_alloc(b) ((void*) (b)->alloc)
 #define tm_block_node_size(b) ((b)->type->size + tm_node_HDR_SIZE)
 #define tm_block_node_next(b, n) ((void*) (((char*) (n)) + tm_block_node_size(b)))
 
+#if tm_block_GUARD
+#define tm_block_validate(b) do { \
+   tm_assert_test(b); \
+   tm_assert_test(! ((void*) &tm <= (void*) (b) && (void*) (b) < (void*) (&tm + 1))); \
+   tm_assert_test((b)->guard1 == tm_block_hash(b)); \
+   tm_assert_test((b)->guard2 == tm_block_hash(b)); \
+} while(0)
+#else
+#define tm_block_validate(b)
+#endif
+
 /****************************************************************************/
 /*
-** A tm_type represents an information about all types of a specific size.
+** A tm_type represents information about all types of a specific size.
 ** Keeps track of:
 ** 1. How many tm_nodes of a given color exists.
 ** 2. Lists of tm_nodes by color.
@@ -121,7 +143,8 @@ typedef struct tm_block {
 ** 5. A tm_adesc user-level descriptor.
 */
 typedef struct tm_type {
-  tm_list list;               /* All types list. */
+  tm_list list;               /* All types list: tm.types */
+  int id;
 #if tm_name_GUARD
   const char *name;
 #endif
@@ -130,7 +153,7 @@ typedef struct tm_type {
   tm_list blocks;             /* List of blocks allocated for this type. */
   size_t n[tm__LAST2];        /* Total elements. */
   tm_list l[tm_TOTAL];        /* Lists of node by color. */
-  tm_block *ab;               /* The current block we are allocating from. */
+  tm_block *alloc_from_block; /* The current block we are allocating from. */
   tm_adesc *desc;             /* User-specified descriptor handle. */
 } tm_type;
 
@@ -145,14 +168,15 @@ enum tm_config {
   tm_node_HDR_SIZE = sizeof(tm_node),
   tm_block_HDR_SIZE = sizeof(tm_block),
 
-  tm_PAGESIZE = PAGESIZE,
-  tm_block_SIZE = PAGESIZE,
+  tm_block_SIZE = tm_PAGESIZE,
+  tm_page_SIZE = tm_PAGESIZE,
 
   tm_block_SIZE_MAX = tm_block_SIZE - tm_block_HDR_SIZE,
 
-  tm_PTR_RANGE = 512 * 1024 * 1024, /* 512 Mb */
-  tm_block_N_MAX = tm_PTR_RANGE / tm_block_SIZE,
+  tm_address_range_k = 1UL << (sizeof(void*) * 8 - 10),
+  tm_block_N_MAX = sizeof(void*) / tm_block_SIZE,
 };
+
 
 /****************************************************************************/
 /* Phases. */
@@ -199,23 +223,38 @@ struct tm_data {
   /* Valid pointer range. */
   void *ptr_range[2];
 
-  short inited, initing;
+  /****************************************************************************/
+  /* Current status. */
+
+  int inited, initing;
+
+  int marking;
+  int sweeping;
 
   /* The current process. */
   enum tm_phase phase, next_phase;
 
+  size_t alloc_by_phase[tm_phase_END];
+
   /* Block. */
   tm_block *block_first; /* The first block allocated. */
   tm_block *block_last;  /* The last block allocated. */
-  void *alloc_os_expected; /* The next ptr expected from tm_alloc_os(). */
 
-#if 0
-  unsigned long block_bitmap[tm_block_N_MAX / (sizeof(unsigned long)*8)];
-#endif
+  /* OS-level allocation */
+  void *os_alloc_last;   /* The last alloc from the os. */
+  size_t os_alloc_last_size; 
+  void *os_alloc_expected; /* The next ptr expected from tm_alloc_os(). */
+
+  /* A bit map of pages with allocated nodes. */
+  unsigned long page_in_use[tm_address_range_k / (tm_page_SIZE / 1024) / (sizeof(unsigned long) * 8)];
+
+  /* A list of free tm_blocks not returned to os. */
   tm_list free_blocks;
+  int free_blocks_n;
 
   /* Types. */
   tm_list types;
+  int type_id;
 
   /* Block sweeping iterators. */
   tm_type *bt;
@@ -240,7 +279,8 @@ struct tm_data {
   
   /* Stats */
   tm_time_stat /* time spent: */
-    ts_alloc_os,            /* in tm_alloc_os(). */
+    ts_os_alloc,            /* in tm_alloc_os(). */
+    ts_os_free,             /* in tm_free_os().  */
     ts_alloc,               /* in tm_alloc().    */
     ts_free,                /* in tm_free().     */
     ts_gc,                  /* in tm_gc_full().  */
@@ -263,6 +303,25 @@ struct tm_data {
   unsigned long data_mutations;
   unsigned long stack_mutations;
 
+  /* Stats/debugging support. */
+  size_t alloc_id;
+  size_t alloc_pass;
+  size_t alloc_request_size;
+  tm_type *alloc_request_type;
+  int msg_ignored; /* True if last tm_msg() was disabled; used by tm_msg1() */
+  char msg_enable_table[256];
+
+  /* Full GC stats. */
+  size_t blocks_allocated_since_gc;
+  size_t blocks_in_use_after_gc;
+  size_t nodes_allocated_since_gc;
+  size_t nodes_in_use_after_gc;
+  size_t bytes_allocated_since_gc;
+  size_t bytes_in_use_after_gc;
+
+  /* mmap() fd */
+  int mmap_fd;
+
   /* Register roots. */
   jmp_buf jb;
 };
@@ -274,9 +333,35 @@ extern struct tm_data tm;
 #define tm_ptr_h tm.ptr_range[1]
 
 
+/**************************************************************************/
+/* Global color list iterators. */
+
+#define tm_node_LOOP_INIT(C) \
+  tm.tp[C] = tm_list_next(&tm.types); \
+  tm.np[C] = tm_list_next(&tm.tp[C]->l[C]);
+
+#define tm_node_LOOP(C) do { \
+  while ( (void*) tm.tp[C] != (void*) &tm.types ) { \
+    tm_type *t = tm.tp[C], *tp = tm_list_next(t); \
+    while ( (void*) tm.np[C] != (void*) &t->l[C] ) { \
+      tm_node *n = tm.np[C], *np = tm_list_next(n); \
+      tm.np[C] = np;
+
+#define tm_node_LOOP_BREAK() goto tm_node_STOP
+
+#define tm_node_LOOP_END(C) \
+    } ; \
+    tm.tp[C] = tp; \
+    tm.np[C] = tm_list_next(&tp->l[C]); \
+  } \
+  tm_node_LOOP_INIT(C); \
+  tm_node_STOP: (void)0; \
+} while ( 0 )
+
 /****************************************************************************/
 /* Internal procs. */
 
+void tm_node_set_color(tm_node *n, tm_block *b, tm_color c);
 
 void tm_set_stack_ptr(void* ptr);
 
@@ -294,10 +379,22 @@ void tm_free_inner(void *ptr);
 
 void tm_gc_full_inner();
 
-void tm_abort();
-void tm_stop();
-void tm_fatal();
+/****************************************************************************/
+/* Internals */
+
+#include "tredmill/os.h"
+#include "tredmill/root.h"
+#include "tredmill/page.h"
+#include "tredmill/ptr.h"
+#include "tredmill/mark.h"
 
 /****************************************************************************/
+
+#include <stdio.h>
+#include <assert.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <string.h>
 
 #endif

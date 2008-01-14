@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.12 2003-07-28 22:50:30 stephens Exp $ */
+/* $Id: tmtest.c,v 1.13 2008-01-14 00:08:02 stephens Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -51,7 +51,7 @@ static void *my_alloc(size_t size)
     return 0; /* NOTREACHED */
   }
 
-  my_alloc_id = tm_alloc_id;
+  my_alloc_id = tm.alloc_id;
 
 #if 0
   if ( tm_sweep_is_error ) {
@@ -200,46 +200,71 @@ typedef struct my_cons {
 
 
 
-static void print_my_cons_list_internal(my_cons *p)
+static int print_my_cons_list_internal(my_cons *_p)
 {
+  int result = 0;
+  my_cons *p = _p;
+
   if ( ((unsigned long) p) & 3 ) {
     tm_msg1("%lu", (long) p >> 2);
-  } else {
-    tm_msg1("(");
-    
-    while ( p ) {
-      if ( p->visited ) {
+    ++ result;
+  }
+  else if ( p == 0 ) {
+    tm_msg1("()");
+  }
+  else {
+    ++ _p->visited;
+
+    do {
+      if ( p != _p && p->visited ) {
 	tm_msg1("#%p", (void*) p);
 	break;
       } else {
 	my_cons *car = p->car;
 	
-	p->visited ++;
 	p->car = (void*) ((-1 << 2) + 1);
-	print_my_cons_list_internal(car);
+	++ p->visited;
+	result += print_my_cons_list_internal(car);
+	-- p->visited;
 	p->car = car;
+
 	if ( (((unsigned long) p->cdr) & 3) == 0 ) {
 	  tm_msg1(" ");
 	  p = p->cdr;
 	} else {
 	  tm_msg1(" . ");
-	  print_my_cons_list_internal(p->cdr);
+	  ++ p->visited;
+	  result += print_my_cons_list_internal(p->cdr);
+	  -- p->visited;
 	  break;
 	}
+
       }
-    }
+    } while ( p );
     
+    if ( _p ) {
+      -- _p->visited;
+    }
+
     tm_msg1(")");
   }
+
+  return result;
 }
 
 
-static void print_my_cons_list(const char *name, my_cons *p)
+static int print_my_cons_list(const char *name, my_cons *p)
 {
+  int result;
+
   tm_msg("*: %s list: {\n", name);
-  print_my_cons_list_internal(p);
+  result = print_my_cons_list_internal(p);
   tm_msg1("\n");
   tm_msg("*: %s list: }\n", name);
+
+  fprintf(stderr, "%s list depth = %d\n", name, result);
+ 
+  return result;
 }
 
 
@@ -260,6 +285,8 @@ static void *my_cons_(void *d, int nsize)
     size = sizeof(*c);
   }
   c = my_alloc(size);
+  tm_write_barrier(&c);
+
   c->car = my_int(my_alloc_id);
   c->cdr = d;
   c->visited = 0;
@@ -285,11 +312,13 @@ static void test4()
 
   tm_sweep_is_error = 0;
 
-  print_my_cons_list("test4", root);
+  print_my_cons_list("test4 root", root);
 
   end_test();
 
-  print_my_cons_list("test4", root);
+  print_my_cons_list("test4 root", root);
+
+  root = 0;
 }
 
 
@@ -302,18 +331,22 @@ static void test5()
 
   for ( i = 0; i < nalloc; i ++ ) {
     my_cons *c = my_cons_(test5_root, nsize);
-    if ( (i & 3) == 0 ) 
+    if ( (i & 3) == 0 ) {
       test5_root = c;
+      tm_write_barrier(&test5_root);
+    }
     // print_my_cons_list(root);
   }
 
-  print_my_cons_list("test5", test5_root);
+  print_my_cons_list("test5 test5_root", test5_root);
 
   end_test();
 
-  print_my_cons_list("test5", test5_root);
+  print_my_cons_list("test5 test5_root", test5_root);
 
   test5_root = 0;
+  tm_write_barrier(&test5_root);
+
   tm_gc_full();
 }
 
@@ -332,7 +365,7 @@ static void test6()
   for ( i = 0; i < nalloc; i ++ ) {
     my_cons *c = my_cons_(0, nsize);
     *rp = c;
-    tm_write_barrier(*rp);
+    tm_write_barrier(&*rp);
     rp = &(c->cdr);
   }
 
@@ -344,6 +377,9 @@ static void test6()
 
   print_my_cons_list("test6", root);
   tm_msg_enable("w", 0);
+
+  root = 0;
+  rp = 0;
 }
 
 
@@ -358,22 +394,30 @@ static void test7()
     my_cons *c = my_cons_(root, nsize);
 
     root = c;
+    tm_write_barrier(&root);
 
     if ( (i & 3) == 0 ) {
-      my_cons **p = &roots[my_rand(sizeof(roots)/sizeof(roots[0]))];
+      my_cons **p = &roots[my_rand(sizeof(roots) / sizeof(roots[0]))];
       if ( *p ) {
 	(*p)->cdr = c;
 	tm_write_barrier_pure(*p);
       } else {
 	*p = c;
-	tm_write_barrier(*p);
+	tm_write_barrier(&*p);
       }
     }
   }
 
+#if 0
   print_my_cons_list("test7", root);
+#endif
 
   end_test();
+
+  root = 0;
+  tm_write_barrier(&root);
+
+  memset(roots, 0, sizeof(roots));
 }
 #endif
 
@@ -386,50 +430,56 @@ static void test8()
 
   memset(roots, 0, sizeof(roots));
   do { 
-    for ( i = 0; i < nalloc; i ++ ) {
+    for ( i = 0; i < nalloc; ++ i ) {
       my_cons *c = my_cons_(0, nsize);
       
       root = c;
-      
+      tm_write_barrier(&root);
+
       /* If c is not garbage. */
       if ( my_rand(2) == 0 ) {
-	my_cons **p = &roots[my_rand(sizeof(roots)/sizeof(roots[0]))];
+	my_cons **p = &roots[my_rand(sizeof(roots) / sizeof(roots[0]))];
 
 	/* chain c->cdr to root[p] */
-	if ( my_rand(20) ) {
+	if ( my_rand(10) ) {
 	  c->cdr = *p;
 	  tm_write_barrier_pure(c);
+	} else {
+	  /* Put on root list. */
+	  *p = c;
+	  tm_write_barrier(&*p);
 	}
-
-	/* Put on root list. */
-	*p = c;
-	tm_write_barrier(p);
       }
     }
 
-    for ( i = 0; i < sizeof(roots)/sizeof(roots[0]); i ++ ) {
-      print_my_cons_list("test8", roots[i]);
+    print_my_cons_list("test8 root", root);
+    for ( i = 0; i < sizeof(roots) / sizeof(roots[0]); ++ i ) {
+      char buf[32];
+      sprintf(buf, "test8 roots[%d]", i);
+      print_my_cons_list(buf, roots[i]);
     }
     tm_print_stats();
-  } while ( tm_alloc_id < 40000000 );
-
-  print_my_cons_list("test8", root);
+  } while ( tm.alloc_id < 40000000 );
 
   end_test();
+
+  root = 0;
+  tm_write_barrier(&root);
+  memset(roots, 0, sizeof(roots)); 
+  tm_write_barrier(&roots);
 }
 #endif
 
 
 int main(int argc, char **argv, char **envp)
 {
-
   fprintf(stderr, "%s: running\n", argv[0]);
 
-  tm_alloc_os_max = 32 * 1024 * 1024;
+  tm_os_alloc_max = 32 * 1024 * 1024;
 
   srand(0x54ae3523);
 
-#if 0
+#if 1
   tm_init(&argc, &argv, &envp);
 #endif
 

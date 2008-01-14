@@ -1,4 +1,4 @@
-/* $Id: tm.h,v 1.8 2003-07-28 22:50:30 stephens Exp $ */
+/* $Id: tm.h,v 1.9 2008-01-14 00:08:02 stephens Exp $ */
 #ifndef _tredmill_tm_h
 #define _tredmill_tm_h
 
@@ -39,12 +39,6 @@ void *tm_realloc(void *ptr, size_t size);
 void tm_free(void *ptr);
 
 /*******************************************************************************/
-/* Current status. */
-
-extern int tm_marking;
-extern int tm_sweeping;
-
-/*******************************************************************************/
 /* Write barrier */
 
 /*
@@ -62,7 +56,7 @@ extern void (*_tm_write_barrier)(void *referent);
 
 extern void (*_tm_write_barrier_pure)(void *referent);
 #define tm_write_barrier_pure(R) (*_tm_write_barrier_pure)(R)
-/* Assumes referent is a tm_alloc() ptr. */
+/* Assumes referent is a tm_malloc() ptr. */
 
 /*******************************************************************************/
 /* GC */
@@ -94,8 +88,7 @@ extern long tm_node_scan_some_size;
 extern long tm_node_sweep_some_size;
 extern long tm_block_sweep_some_size;
 extern long tm_node_unmark_some_size;
-extern size_t tm_alloc_os_max;
-extern unsigned long tm_alloc_id;
+extern size_t tm_os_alloc_max;
 
 /*******************************************************************************/
 /* EOF */

@@ -1,16 +1,32 @@
-# $Id: Makefile,v 1.7 2000-01-13 11:18:59 stephensk Exp $
+# $Id: Makefile,v 1.8 2008-01-14 00:08:02 stephens Exp $
+
+MAKS=../maks
 
 INCLS += ..
 
 H_FILES = \
-	tm.h \
-	list.h \
-	internal.h
+  debug.h \
+  stats.h \
+  os.h \
+  root.h \
+  ptr.h \
+  barrier.h \
+  page.h \
+  mark.h \
+  tm.h \
+  list.h \
+  internal.h
 
 C_FILES = \
-	tm.c \
-	user.c \
-	malloc.c
+  debug.c \
+  stats.c \
+  os.c \
+  root.c \
+  barrier.c \
+  mark.c \
+  tm.c \
+  user.c \
+  malloc.c
 
 #################################################################
 # Pre
