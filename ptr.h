@@ -100,7 +100,7 @@ tm_node *tm_ptr_to_node(void *p)
   /* Get the block and type. */
   b = tm_ptr_to_block(p);
 
-  tm_block_validate(b);
+  _tm_block_validate(b);
 
   /* Avoid untyped blocks. */
   if ( ! b->type )
@@ -203,7 +203,7 @@ static __inline
 tm_type *tm_node_to_type(tm_node *n)
 {
   tm_block *b = tm_ptr_to_block((char*) n);
-  tm_block_validate(b);
+  _tm_block_validate(b);
   return b->type;
 }
 

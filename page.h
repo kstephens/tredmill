@@ -11,7 +11,7 @@
 
 #define tm_page_index_bits (sizeof(tm.page_in_use[0]) * 8)
 #define tm_page_index_offset(I) ((I) / tm_page_index_bits)
-#define tm_page_index_bit(I) (1UL << ((I) % tm_page_index_bits))
+#define tm_page_index_bit(I) (1U << ((I) % tm_page_index_bits))
 
 
 static __inline 
@@ -46,8 +46,9 @@ void _tm_page_mark_unused(void *ptr)
 static __inline 
 void _tm_page_mark_used_range(void *ptr, size_t size)
 {
-  tm_assert(tm_ptr_is_aligned_to_page(ptr));
-  tm_assert(tm_ptr_is_aligned_to_page(size));
+  tm_assert_test(tm_ptr_is_aligned_to_page(ptr));
+  tm_assert_test(tm_ptr_is_aligned_to_page(size));
+
   while ( size > 0 ) {
     _tm_page_mark_used(ptr);
     ptr += tm_page_SIZE;
@@ -60,8 +61,9 @@ void _tm_page_mark_used_range(void *ptr, size_t size)
 static __inline 
 void _tm_page_mark_unused_range(void *ptr, size_t size)
 {
-  tm_assert(tm_ptr_is_aligned_to_page(ptr));
-  tm_assert(tm_ptr_is_aligned_to_page(size));
+  tm_assert_test(tm_ptr_is_aligned_to_page(ptr));
+  tm_assert_test(tm_ptr_is_aligned_to_page(size));
+
   while ( size > 0 ) {
     _tm_page_mark_unused(ptr);
     ptr += tm_page_SIZE;

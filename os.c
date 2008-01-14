@@ -7,11 +7,7 @@
 size_t tm_os_alloc_total = 0;
 
 
-#define USE_MMAP 1
-#define USE_SBRK 0
-
-
-#if USE_MMAP
+#if tm_USE_MMAP
 
 #include <sys/mman.h> 
 
@@ -20,7 +16,7 @@ void *_tm_os_alloc_(long size)
 {
   void *ptr;
 
-  tm_assert(size > 0);
+  tm_assert_test(size > 0);
 
 #ifdef MAP_ANONYMOUS
   tm.mmap_fd = -1;
@@ -62,7 +58,7 @@ void *_tm_os_free_(void *ptr, long size)
 #endif
 
 
-#if USE_SBRK
+#if tm_USE_SBRK
 
 static __inline
 void *_tm_os_alloc_(long size)
@@ -91,8 +87,8 @@ void _tm_os_free_(void *ptr, long size)
 {
   void *ptr = 0;
 
-  tm_assert(ptr != 0);
-  tm_assert(size > 0);
+  tm_assert_test(ptr != 0);
+  tm_assert_test(size > 0);
 
   if ( ptr == tm.os_alloc_last &&
        size == tm.os_alloc_last_size ) {
@@ -136,7 +132,7 @@ void *_tm_os_alloc(long size)
 
     tm_os_alloc_total += size;
   } else if ( size < 0 ) {
-    tm_assert(size > 0);
+    tm_assert_test(size > 0);
   }
 #if 0 
   else {
@@ -246,8 +242,8 @@ void *_tm_os_alloc_aligned(size_t size)
 
 void _tm_os_free_aligned(void *ptr, size_t size)
 {
-  tm_assert(tm_ptr_is_aligned_to_block(ptr));
-  tm_assert(tm_ptr_is_aligned_to_block(size));
+  tm_assert_test(tm_ptr_is_aligned_to_block(ptr));
+  tm_assert_test(tm_ptr_is_aligned_to_block(size));
  
   _tm_os_free(ptr, size);
 }

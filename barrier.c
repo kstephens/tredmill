@@ -29,7 +29,9 @@ void __tm_write_root_root(void *referent)
 {
   tm_abort();
   tm_mark(* (void**) referent);
+#if 0
   tm_msg("w r p%p\n", referent);
+#endif
 }
 
 
@@ -37,14 +39,18 @@ void __tm_write_root_mark(void *referent)
 {
   tm_abort();
   tm_mark(* (void**) referent);
+#if 0
   tm_msg("w r p%p\n", referent);
+#endif
 }
 
 
 void __tm_write_root_sweep(void *referent)
 {
   tm_abort();
+#if 0
   tm_msg("w r p%p\n", referent);
+#endif
 }
 
 
@@ -76,8 +82,18 @@ void tm_write_barrier_node(tm_node *n)
     **
     ** Reschedule it to be scanned.
     */
+#if tm_TIME_STAT
+    tm_time_stat_begin(&tm.ts_barrier_black);
+#endif
+
     tm_node_set_color(n, tm_node_to_block(n), tm_GREY);
+
+#if tm_TIME_STAT
+    tm_time_stat_end(&tm.ts_barrier_black);
+#endif
+#if 0
     tm_msg("w b n%p\n", n);
+#endif
     break;
 
   default:
@@ -93,8 +109,14 @@ void __tm_write_barrier_ignore(void *ptr)
 }
 
 
+#define RETURN goto _return
+
 void __tm_write_barrier_root(void *ptr)
 {
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_barrier);
+#endif
+
   /* Currently marking roots.
   ** Don't know if this root has been marked yet or not.
   */
@@ -106,8 +128,10 @@ void __tm_write_barrier_root(void *ptr)
   */
   if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
     ++ tm.stack_mutations; 
+#if 0
     tm_msg("w s p%p\n", ptr);
-    return;
+#endif
+    RETURN;
   }
 
   /*
@@ -116,10 +140,10 @@ void __tm_write_barrier_root(void *ptr)
   */
 #if 1
   if ( _tm_page_in_use(ptr) ) 
-    return;
+    RETURN;
 #else
   if ( tm_ptr_l <= ptr && ptr <= tm_ptr_h )
-    return;
+    RETURN;
 #endif
 
   /*
@@ -127,13 +151,26 @@ void __tm_write_barrier_root(void *ptr)
   ** Mark the root as being mutated.
   */
   ++ tm.data_mutations;
+#if 0
   tm_msg("w r p%p\n", ptr);
+#endif
+
+ _return:
+  (void) 0;
+
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_barrier);
+#endif
 }
 
 
 void __tm_write_barrier_mark(void *ptr)
 {
   tm_node *n;
+
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_barrier);
+#endif
 
   tm_assert_test(tm.phase == tm_MARK);
 
@@ -145,7 +182,7 @@ void __tm_write_barrier_mark(void *ptr)
   if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
     ++ tm.stack_mutations; 
     // tm_msg("w s p%p\n", ptr);
-    return;
+    RETURN;
   }
 
   /*
@@ -161,14 +198,27 @@ void __tm_write_barrier_mark(void *ptr)
     tm_write_barrier_node(n);
   } else {
     ++ tm.data_mutations;
+#if 0
     tm_msg("w r p%p\n", ptr);
+#endif
   }
+
+ _return:
+  (void) 0;
+
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_barrier);
+#endif
 }
 
 
 void __tm_write_barrier_sweep(void *ptr)
 {
   tm_node *n;
+
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_barrier);
+#endif
 
   tm_assert_test(tm.phase == tm_SWEEP);
 
@@ -180,7 +230,7 @@ void __tm_write_barrier_sweep(void *ptr)
   if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
     ++ tm.stack_mutations;
     // tm_msg("w s p%p\n", ptr);
-    return;
+    RETURN;
   }
 
   /*
@@ -197,10 +247,20 @@ void __tm_write_barrier_sweep(void *ptr)
     tm_write_barrier_node(n);
   } else {
     ++ tm.data_mutations;
+#if 0
     tm_msg("w r p%p\n", ptr);
+#endif
   }
+
+ _return:
+  (void) 0;
+
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_barrier);
+#endif
 }
 
+#undef RETURN
 
 /*******************************************************************************/
 /* the tm_write_barrier_pure(ptr) assumes ptr is directly from tm_alloc. */

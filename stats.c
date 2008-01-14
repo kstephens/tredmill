@@ -47,7 +47,7 @@ void tm_validate_lists()
   tm_assert(tm_list_color(&tm.free_blocks) == tm_FREE_BLOCK);
   tm_list_LOOP(&tm.free_blocks, b);
   {
-    tm_block_validate(b);
+    _tm_block_validate(b);
     tm_assert(tm_list_color(b) == tm_FREE_BLOCK);
     tm_assert(b->type == 0);
   }
@@ -67,7 +67,7 @@ void tm_validate_lists()
     tm_assert(tm_list_color(&t->blocks) == tm_LIVE_BLOCK);
     tm_list_LOOP(&t->blocks, b);
     {
-      tm_block_validate(b);
+      _tm_block_validate(b);
       tm_assert(tm_list_color(b) == tm_LIVE_BLOCK);
       tm_assert(b->type == t);
       ++ bn[tm_B];
@@ -224,7 +224,7 @@ void tm_print_block_stats()
     {
       int j;
 
-      tm_block_validate(b);
+      _tm_block_validate(b);
 
       tm_msg("X    b%p s%lu ", (void*) b, (unsigned long) b->size);
 
@@ -248,6 +248,7 @@ void tm_print_block_stats()
 /***************************************************************************/
 /* time stats support. */
 
+void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p);
 
 
 void tm_time_stat_begin(tm_time_stat *ts)
@@ -262,66 +263,6 @@ void tm_time_stat_begin(tm_time_stat *ts)
   gettimeofday(&t0, 0);
   ts->t0 = tv_2_double(&t0);
 #endif
-}
-
-
-void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p)
-{
-#define tv_fmt "%.7f"
-#define tv_fmt_args(V) (double) (V)
-
-  tm_msg("T %-10s "
-	 ,
-	 ts->name);
-
-  if ( ! (flags & (2|4)) ) {
-    tm_msg1(
-	   " dt " tv_fmt
-	   ,
-	   tv_fmt_args(ts->td)
-	   );
-  }
-
-  tm_msg1(
-	 " st " tv_fmt 
-	 ,
-	 tv_fmt_args(ts->ts)
-	 );
-
-  if ( flags & 1 ) {
-    tm_msg1(
-	   " wt " tv_fmt
-	   ,
-	   tv_fmt_args(ts->tw)
-	   );
-  }
-
-  if ( flags & 2 ) {
-    tm_msg1(
-	   " c %8lu"
-	   , 
-	   (unsigned long) ts->count
-	   );
-  }
-
-  if ( flags & 4 ) {
-    tm_msg1(
-	    " at %7f"
-	    ,
-	    (double) ts->ts / (ts->count || 1)
-	    );
-  }
-
-  if ( alloc_count_p ) {
-    tm_msg1(
-	    " A %8lu"
-	    ,
-	    (unsigned long) *alloc_count_p
-	    );
-  }
-
-
-  tm_msg1("\n");
 }
 
 
@@ -346,18 +287,85 @@ void tm_time_stat_end(tm_time_stat *ts)
 
   /* Compute dt. */
   ts->td = ts->t1 - ts->t0;
+#if tm_USE_times
   ts->td += ts->t11 - ts->t01;
+#endif
 
   /* Compute sum of dt. */
   ts->ts += ts->td;
+
+  /* Compute avg time. */
+  ts->ta = ts->ts / (double) ts->count;
 
   /* Compute worst time. */
   if ( (ts->tw_changed = ts->tw < ts->td) ) {
     ts->tw = ts->td;
   }
 
+#if 0
   /* Print stats. */
   tm_time_stat_print_(ts, ts->tw_changed ? 1 : 0, 0);
+#endif
+}
+
+
+void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p)
+{
+#define tv_fmt "%.7f"
+#define tv_fmt_s "%8.4f"
+#define tv_fmt_args(V) (double) (V)
+
+  tm_msg("T %-12s "
+	 ,
+	 ts->name);
+
+  if ( ! (flags & (2|4)) ) {
+    tm_msg1(
+	   " dt " tv_fmt
+	   ,
+	   tv_fmt_args(ts->td)
+	   );
+  }
+
+  tm_msg1(
+	 " st " tv_fmt_s
+	 ,
+	 tv_fmt_args(ts->ts)
+	 );
+
+  if ( flags & 1 ) {
+    tm_msg1(
+	   " wt " tv_fmt
+	   ,
+	   tv_fmt_args(ts->tw)
+	   );
+  }
+
+  if ( flags & 2 ) {
+    tm_msg1(
+	   " c %8lu"
+	   , 
+	   (unsigned long) ts->count
+	   );
+  }
+
+  if ( flags & 4 ) {
+    tm_msg1(
+	    " at %.7f"
+	    ,
+	    (double) ts->ta
+	    );
+  }
+
+  if ( alloc_count_p ) {
+    tm_msg1(
+	    " A %8lu"
+	    ,
+	    (unsigned long) *alloc_count_p
+	    );
+  }
+
+  tm_msg1("\n");
 }
 
 
@@ -374,6 +382,9 @@ void tm_print_time_stats()
   tm_time_stat_print_(&tm.ts_alloc, ~0, 0);
   tm_time_stat_print_(&tm.ts_free, ~0, 0);
   tm_time_stat_print_(&tm.ts_gc, ~0, 0);
+  tm_time_stat_print_(&tm.ts_barrier, ~0, 0);
+  tm_time_stat_print_(&tm.ts_barrier_black, ~0, 0);
+
   for ( i = 0; i < (sizeof(tm.ts_phase)/sizeof(tm.ts_phase[0])); ++ i ) {
     tm_time_stat_print_(&tm.ts_phase[i], ~0, &tm.alloc_by_phase[i]);
   }

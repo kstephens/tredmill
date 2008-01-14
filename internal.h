@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.11 2008-01-14 00:08:02 stephens Exp $ */
+/* $Id: internal.h,v 1.12 2008-01-14 02:40:42 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -122,14 +122,14 @@ typedef struct tm_block {
 #define tm_block_node_next(b, n) ((void*) (((char*) (n)) + tm_block_node_size(b)))
 
 #if tm_block_GUARD
-#define tm_block_validate(b) do { \
+#define _tm_block_validate(b) do { \
    tm_assert_test(b); \
    tm_assert_test(! ((void*) &tm <= (void*) (b) && (void*) (b) < (void*) (&tm + 1))); \
    tm_assert_test((b)->guard1 == tm_block_hash(b)); \
    tm_assert_test((b)->guard2 == tm_block_hash(b)); \
 } while(0)
 #else
-#define tm_block_validate(b)
+#define _tm_block_validate(b)
 #endif
 
 /****************************************************************************/
@@ -204,9 +204,10 @@ typedef struct tm_root {
 typedef struct tm_time_stat {
   const char *name;
   double 
-    td, /* Last allocation time. */
-    ts, /* Total allocation time. */
-    tw, /* Worst allocation time. */
+    td, /* Last time. */
+    ts, /* Total time. */
+    tw, /* Worst time. */
+    ta, /* Avg time. */
     t0, t1, 
     t01, t11;
   short tw_changed;
@@ -234,6 +235,7 @@ struct tm_data {
   /* The current process. */
   enum tm_phase phase, next_phase;
 
+  /* Number of cumulative allocations during each phase. */
   size_t alloc_by_phase[tm_phase_END];
 
   /* Block. */
@@ -241,24 +243,33 @@ struct tm_data {
   tm_block *block_last;  /* The last block allocated. */
 
   /* OS-level allocation */
-  void *os_alloc_last;   /* The last alloc from the os. */
+  void * os_alloc_last;   /* The last alloc from the os. */
   size_t os_alloc_last_size; 
-  void *os_alloc_expected; /* The next ptr expected from tm_alloc_os(). */
+  void * os_alloc_expected; /* The next ptr expected from _tm_os_alloc_(). */
 
-  /* A bit map of pages with allocated nodes. */
-  unsigned long page_in_use[tm_address_range_k / (tm_page_SIZE / 1024) / (sizeof(unsigned long) * 8)];
+#define tm_BITMAP_SIZE (tm_address_range_k / (tm_page_SIZE / 1024) / (sizeof(unsigned int) * 8))
+
+  /* A bit map of pages with nodes in use. */
+  /* Addressable by tm_page_SIZE. */
+  unsigned int page_in_use[tm_BITMAP_SIZE];
+
+  /* A bit map of pages containing allocated block headers. */
+  unsigned int block_header[tm_BITMAP_SIZE];
+
+  /* A bit map of large blocks. */
+  unsigned int block_large[tm_BITMAP_SIZE];
 
   /* A list of free tm_blocks not returned to os. */
   tm_list free_blocks;
   int free_blocks_n;
 
-  /* Types. */
-  tm_list types;
-  int type_id;
-
   /* Block sweeping iterators. */
   tm_type *bt;
   tm_block *bb;
+
+  /* Types. */
+  tm_list types;
+  int type_id;
 
   /* Type hash table. */
   tm_type type_reserve[50], *type_free;
@@ -284,7 +295,10 @@ struct tm_data {
     ts_alloc,               /* in tm_alloc().    */
     ts_free,                /* in tm_free().     */
     ts_gc,                  /* in tm_gc_full().  */
+    ts_barrier,             /* in tm_barrier.    */
+    ts_barrier_black,       /* in tm_barrier for black node  */
     ts_phase[tm_phase_END]; /* in each phase.    */
+    
 
   /* Roots */
   tm_root roots[8];
@@ -319,7 +333,7 @@ struct tm_data {
   size_t bytes_allocated_since_gc;
   size_t bytes_in_use_after_gc;
 
-  /* mmap() fd */
+  /* mmap() fd. */
   int mmap_fd;
 
   /* Register roots. */

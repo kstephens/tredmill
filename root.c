@@ -24,8 +24,8 @@ int _tm_root_add_1(tm_root *a)
     tm.nroots = i + 1;
   }
 
-  tm_assert(i < MAX_ROOTS);
-  tm_assert(i >= tm.root_datai);
+  tm_assert_test(i < MAX_ROOTS);
+  tm_assert_test(i >= tm.root_datai);
 
   if ( tm.root_newi == -1 ) {
     tm.root_newi = i;
