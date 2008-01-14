@@ -1,132 +1,16 @@
-$Id: README,v 1.4 2002-05-11 02:33:27 stephens Exp $
+$Id: README,v 1.5 2008-01-14 16:09:58 stephens Exp $
 
 	Introduction
 
 This is a real-time, non-relocating, conservative, Treadmill allocator.
 
-TM attempts to limit the amount of scanning, marking and collecting during each call to tm_alloc() to avoid stopping the world for long periods of time.
+TM interleaves marking, scanning and sweeping during each call to tm_malloc().
 
+TM attempts to limit the amount of scanning, marking and collecting
+during each call to tm_alloc() to avoid stopping the world for long
+periods of time.
 
-	Coloring
+      	For More Information
 
-An allocation unit is a tm_node.  Each node is allocated from am aligned, fixed block size (except for blocks that will not fit within the fixed size).
+See http://kurtstephens.com/research/tredmill
 
-Each node has a "color" tag describing its current allocation state:
-
-1. white: free, unused.
-2. ecru: allocated, unmarked.
-3. grey: allocated, scheduled, unmarked.
-4. black: allocated, marked.
-
-Each node and is kept on a doubly-linked list based on its current color.  When a node's color changes it moves to a different colored list for processing in a different phase.
-
-For each size of node, a type is created.  Each type has it's own white, ecru, grey, and black lists.  Each node lives on its type's color list.
-
-	Allocation Phases
-
-The allocator interleaves the following phases with allocation:
-
-1. ALLOC: Allocation.             (WHITE -> GREY)
-2. ROOT: Root marking.            (ECRU  -> GREY)
-3. MARK: Mark scheduled nodes.    (GREY  -> BLACK)
-4. SWEEP: Freeing unmarked nodes. (ECRU  -> WHITE)
-5. UNMARK: Unmarking marked.      (BLACK -> ECRU)
-
-During each call to tm_alloc.
-
-1. ALLOC: 
-  Allocate objects from free list until free list is empty.
-
-2. ROOT:  
-  A fixed number of root bytes are scanned for pointers into allocated space.  After all roots are scanned.
-
-3. MARK: 
-  A fixed number of node bytes are scanned for pointers and marked.
-
-4. SWEEP: 
-  If there are no more nodes to be marked,
-  The stacks are scanned for references.
-  If there are still no more nodes to be marked,
-  Begin sweeping a fixed number of nodes.
-
-5. UNMARK: 
-  A fixed number of nodes are returned to the allocated list.
-
-Allocated nodes are taken from the type's WHITE list and placed on the GREY list.  During the SWEEP phase allocated nodes are moved to the GREY list to avoid accidently sweeping them, otherwise they are moved to the ECRU list for possible marking.
-
-If no WHITE nodes are available for tm_alloc(), a new block is requested from th OS and is assigned to the type for use as an allocation buffer.  A limited number of new free nodes are created by allocating from the type's allocation block and initialized as new WHITE nodes.
-
-Note: new blocks may be need to be allocated from the OS even during the non-ALLOC phases, if the type's free list or allocation block.   The reasoning here is is than the OS should be able to allocate a new allocation block faster than a stop-the-world collection.
-
-
-	Aligned blocks:
-
-Aligned blocks are used for allocation because simple pointer arthmetic can be used to determine a generic words vitality as a pointer to heap-allocated node.
-
-To determine a pointer's allocation type:
-
-1) Determine if the ptr is in a range of blocks we have allocated from the OS.
-2) Mask off the insignification page bits to get a block address.
-3) Determine if the block is in use.
-4) Determine the size of nodes in the block from the block's type.
-5) Determine if the ptr resides in the data portion of the node.
-
-This can all be done in a few instructions with relying on heaps or other searching.  Nodes of block size or greater are maintained in a separate list and are determined by using a bitarray keyed by block address.  If the bitarray has a one for the potental big block address, search the Big Object List.
-
-	Write barriers:
-
-During the MARK phase any BLACK node that is mutated must be rescanned due to the possible introduction of new references from the BLACK node to ECRU nodes.  This is achieved by calling tm_write_barrier(R) after modifing R's contents.
-
-There are two versions of the write barrier:
-
-1. tm_write_barrier(R)
-2. tm_write_barrier_pure(R)
-
-tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc().  Do not use tm_write_barrier_pure(R) if R might be an interior pointer or a pointer to a stack or statically allocated object.  Use tm_write_barrier(R) if you don't know where R points to.
-If R is a global root location tm_write_barrier(R) will cause global root rescanning if the collector is in the MARK phase.
-
-If you know you are modifing a global root ptr location.
-
-Stack pointer writes do not need to be traced, because stack scanning occurs atomically at the end of ROOT.
-
-If you are entering code where the write barrier protocol is not followed you can temporarly disable incremental collection by calling tm_disable_write_barrier().  This puts the collector into a "stop-world" collection mode until tm_enable_write_barrier() is called.
-
-A virtual memory write-barrier based on mmap() might be easier to manage.  Recoloring and marking root set pages can be done in hardware assuming the overhead of mmap() is low when changing phases and colors.
-
-	Type segregation:
-
-Nodes are segregated by type (currently type is a size).  By default, types are rounded up to the next power of 2.  A specified allocation type can be requested with tm_adesc_for_size().  The allocation descriptor can then be used by tm_alloc_desc().  The opaque->
-
-Each node type has its own colored lists, allocated block lists and accounting.
-
-The ecru, grey and black list are logically combined for iteration during MARK, SWEEP, and UNARK phases, using nested [type,node] iterators.
-
-As nodes are allocated, marked, sweeped and unmarked they move between the colored lists as follows.
-     
-[    free (white) ]X------------------- [ marked (black) ]
-    X        |      \                   /       X
-    |        |       \                 /        |
-    |        |        \               /         |
-    |        |         \             /          |
-    |        |          \           /           |
-    |        |           \         /            |
-    |        |            \       /             |
-    |        |             \     /              |
-    |        |              \   /               |
-    |        |               \ /                |
-    | SWEEP  |ALLOC           \                 | MARK
-    |        |               / \                |
-    |        |              /   \               |
-    |        |             /     \              |
-    |        |            /       \             |
-    |        |           /         \ ALLOC      |
-    |        |          /           \           |
-    |        |         /             \          |
-    |        |        /               \         |
-    |        |       / UNMARK          \        |       
-    |        X      X                   X       |
-[ allocated (ecru) ] -----------------> [ scheduled (grey) ]
-                         ROOT+MARK
-
-
-TM is not currently thread-safe or thread-hot.

@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.14 2008-01-14 02:40:42 stephens Exp $ */
+/* $Id: tmtest.c,v 1.15 2008-01-14 16:09:58 stephens Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -458,7 +458,9 @@ static void test8()
       sprintf(buf, "test8 roots[%d]", i);
       print_my_cons_list(buf, roots[i]);
     }
+#if 0
     tm_print_stats();
+#endif
   } while ( tm.alloc_id < 2000000 );
 
   end_test();

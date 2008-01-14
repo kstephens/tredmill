@@ -34,7 +34,7 @@ const char *tm_struct_name[] = {
 const char *tm_phase_name[] = {
   "ALLOC",  /* tm_ALLOC */
   "ROOTS",  /* tm_ROOT */
-  "MARK",   /* tm_MARK */
+  "SCAN",   /* tm_SCAN */
   "SWEEP",  /* tm_SWEEP */
   "UNMARK", /* tm_UNMARK */
   0

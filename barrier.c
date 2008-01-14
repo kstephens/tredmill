@@ -172,7 +172,7 @@ void __tm_write_barrier_mark(void *ptr)
   tm_time_stat_begin(&tm.ts_barrier);
 #endif
 
-  tm_assert_test(tm.phase == tm_MARK);
+  tm_assert_test(tm.phase == tm_SCAN);
 
   /*
   ** If the ptr is a reference to a stack allocated object,
@@ -279,7 +279,7 @@ void __tm_write_barrier_pure_root(void *ptr)
 
 void __tm_write_barrier_pure_mark(void *ptr)
 {
-  tm_assert_test(tm.phase == tm_MARK);
+  tm_assert_test(tm.phase == tm_SCAN);
   tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
 }
 

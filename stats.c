@@ -115,7 +115,7 @@ void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size_
     switch ( tm.phase ) {
     case tm_ALLOC:
     case tm_ROOT:
-    case tm_MARK:
+    case tm_SCAN:
     case tm_UNMARK:
       n[tm_NU] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
       break;

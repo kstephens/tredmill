@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.12 2008-01-14 02:40:42 stephens Exp $ */
+/* $Id: internal.h,v 1.13 2008-01-14 16:09:58 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -184,7 +184,7 @@ enum tm_config {
 enum tm_phase {
   tm_ALLOC = 0, /* Alloc from free.                       (WHITE->ECRU) */
   tm_ROOT,      /* Begin mark roots, alloc os.            (ECRU->GREY)  */
-  tm_MARK,      /* Marking marked roots, alloc os.        (GREY->BLACK) */
+  tm_SCAN,      /* Scan marked nodes, alloc os.           (GREY->BLACK) */
   tm_SWEEP,     /* Sweepng unmarked nodes, alloc free/os. (ECRU->WHITE) */
   tm_UNMARK,    /* Ummarking marked roots, alloc free/os. (BLACK->ECRU) */
   tm_phase_END
@@ -230,6 +230,7 @@ struct tm_data {
   int inited, initing;
 
   int marking;
+  int scanning;
   int sweeping;
 
   /* The current process. */

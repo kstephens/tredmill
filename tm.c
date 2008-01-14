@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.15 2008-01-14 02:40:42 stephens Exp $ */
+/* $Id: tm.c,v 1.16 2008-01-14 16:09:58 stephens Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -7,14 +7,14 @@
 /* User control vars. */
 
 long tm_node_alloc_some_size = 8;
-long tm_node_mark_some_size = 8;
+long tm_node_scan_some_size = 8;
 long tm_node_sweep_some_size = 8;
 long tm_node_unmark_some_size = 8;
 
 long tm_block_sweep_some_size = 2;
 
 size_t tm_os_alloc_max = 64 * 1024 * 1024;
-int  tm_root_mark_full = 1;
+int  tm_root_scan_full = 1;
 
 
 /****************************************************************************/
@@ -30,18 +30,6 @@ void tm_validate_lists();
 /*
 This table defines what color a newly allocated node
 should be during the current allocation phase.
-
-All phases except the SWEEP phase move newly allocated nodes
-from WHITE to ECRU.
-The SWEEP phase moves newly allocated nodes
-from WHITE to BLACK, because, the ECRU lists are considered to be 
-unmarked garbage and the BLACK lists are considered to
-in use during the SWEEP phase.  
-
-GREY might seem a better choice for SWEEP allocs but,
-if any reference that has not already been found by MARK 
-cannot possibly exist, there for cannot be stored within nodes 
-allocated during SWEEP.
 */
 
 #if 1
@@ -69,7 +57,7 @@ allocated during SWEEP.
 static const tm_color tm_phase_alloc[] = {
   tm_DEFAULT_ALLOC_COLOR,  /* tm_ALLOC */
   tm_DEFAULT_ALLOC_COLOR,  /* tm_ROOT */
-  tm_DEFAULT_ALLOC_COLOR,  /* tm_MARK */
+  tm_DEFAULT_ALLOC_COLOR,  /* tm_SCAN */
   tm_SWEEP_ALLOC_COLOR,    /* tm_SWEEP */
   tm_DEFAULT_ALLOC_COLOR   /* tm_UNMARK */
 };
@@ -111,6 +99,7 @@ void _tm_phase_init(int p)
   switch ( (tm.phase = p) ) {
   case tm_ALLOC:
     tm.marking = 0;
+    tm.scanning = 0;
     tm.sweeping = 0;
 
     /* Set up for unmarking. */
@@ -124,6 +113,7 @@ void _tm_phase_init(int p)
 
   case tm_ROOT:
     tm.marking = 0;
+    tm.scanning = 0;
     tm.sweeping = 0;
 
     tm.stack_mutations = tm.data_mutations = 0;
@@ -137,8 +127,9 @@ void _tm_phase_init(int p)
     _tm_write_barrier_pure = __tm_write_barrier_pure_root;
     break;
 
-  case tm_MARK:
+  case tm_SCAN:
     tm.marking = 1;
+    tm.scanning = 1;
     tm.sweeping = 0;
 
     tm.stack_mutations = tm.data_mutations = 0;
@@ -154,6 +145,7 @@ void _tm_phase_init(int p)
 
   case tm_SWEEP:
     tm.marking = 0;
+    tm.scanning = 0;
     tm.sweeping = 1;
 
     tm_assert_test(tm.n[tm_GREY] == 0);
@@ -166,6 +158,7 @@ void _tm_phase_init(int p)
 
   case tm_UNMARK:
     tm.marking = 0;
+    tm.scanning = 0;
     tm.sweeping = 0;
 
     /* Keep track of how many nodes are in use. */
@@ -1236,10 +1229,11 @@ static int tm_check_sweep_error()
 
       /* Attempting to mark all roots. */
       _tm_phase_init(tm_ROOT);
-      _tm_root_mark_all();
+      _tm_root_scan_all();
 
-      _tm_phase_init(tm_MARK);
-      _tm_node_mark_all();
+      /* Scan all marked nodes. */
+      _tm_phase_init(tm_SCAN);
+      _tm_node_scan_all();
 
       if ( tm.n[tm_ECRU] ) {
 	tm_msg("Fatal after root mark: still missing %lu references.\n",
@@ -1482,21 +1476,21 @@ void tm_gc_full_inner_type(tm_type *type)
   tm_sweep_is_error = 0;
 
   while ( try ++ < 2) {
-    /* Mark all roots. */
+    /* Scan all roots, mark pointers. */
     _tm_phase_init(tm_ROOT);
-    _tm_root_mark_all();
+    _tm_root_scan_all();
     
-    /* Mark all scheduled nodes. */
-    _tm_phase_init(tm_MARK);
-    _tm_node_mark_all();
+    /* Scan all marked nodes. */
+    _tm_phase_init(tm_SCAN);
+    _tm_node_scan_all();
     tm_assert_test(tm.n[tm_GREY] == 0);
     
-    /* Sweep the nodes. */
+    /* Sweep the unmarked nodes. */
     _tm_phase_init(tm_SWEEP);
     _tm_node_sweep_all();
     tm_assert_test(tm.n[tm_ECRU] == 0);
     
-    /* Unmark the nodes. */
+    /* Unmark the marked nodes. */
     _tm_phase_init(tm_UNMARK);
     _tm_node_unmark_all();
     tm_assert_test(tm.n[tm_BLACK] == 0);
@@ -1633,39 +1627,40 @@ void *tm_alloc_type_inner(tm_type *t)
     break;
     
   case tm_ROOT:
-    if ( tm_root_mark_full ) {
-      /* Mark all roots. */
-      _tm_root_mark_all();
-      tm.next_phase = tm_MARK;
+    if ( tm_root_scan_full ) {
+      /* Scan all roots for pointers, scan marked nodes. */
+      _tm_root_scan_all();
+      tm.next_phase = tm_SCAN;
     } else {
       /* Scan some roots for pointers. */
-      if ( ! _tm_root_mark_some() ) {
-	tm.next_phase = tm_MARK;
+      if ( ! _tm_root_scan_some() ) {
+	tm.next_phase = tm_SCAN;
       }
     }
     break;
     
-  case tm_MARK:
+  case tm_SCAN:
     /* Unmark some. */
     if ( tm.n[tm_GREY] ) {
       /* Set up for scanning. */
       tm_node_LOOP_INIT(tm_GREY);
 
-      //mark:
-      /* Mark a little bit. */
-      if ( ! _tm_node_mark_some(tm_node_mark_some_size) ) {
+      /* Scan a little bit. */
+      if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
 	/* 
 	** If the roots were mutated during mark,
 	** remark all roots.
 	** Rationale: A reference to a new node may have been
 	** copied from the unmarked stack to a global root.
 	*/
-	if ( tm_root_mark_full || tm.data_mutations || tm.stack_mutations ) {
+	if ( tm_root_scan_full || 
+	     tm.data_mutations || 
+	     tm.stack_mutations ) {
 	  /* Mark all roots. */
-	  _tm_root_mark_all();
+	  _tm_root_scan_all();
 	} else {
 	  /* Mark the stack. */
-	  _tm_stack_mark();
+	  _tm_stack_scan();
 	}
 	
 	/* 
@@ -1673,7 +1668,7 @@ void *tm_alloc_type_inner(tm_type *t)
 	** no additional nodes were marked,
 	** begin sweeping.
 	*/
-	if ( ! _tm_node_mark_some(tm_node_mark_some_size) ) {
+	if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
 	  /* Force SWEEP here so new node gets allocated as GREY. */
 	  _tm_phase_init(tm_SWEEP);
 	  tm.next_phase = -1;
@@ -1698,7 +1693,7 @@ void *tm_alloc_type_inner(tm_type *t)
       if ( tm.n[tm_GREY] ) {
 	/* Set up for scanning. */
 	tm_node_LOOP_INIT(tm_GREY);
-	_tm_node_mark_some(tm_node_mark_some_size * 2);
+	_tm_node_scan_some(tm_node_scan_some_size * 2);
       }
       if ( ! tm.n[tm_GREY] ) {
 	/* Set up for scanning. */

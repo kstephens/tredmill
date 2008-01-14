@@ -18,7 +18,9 @@ int _tm_node_mark(tm_node *n)
     /* The node has not been scheduled for marking; */
     /* schedule it for marking. */
     tm_node_set_color(n, tm_node_to_block(n), tm_GREY);
+#if 0
     tm_msg("m n%p\n", n);
+#endif
     return 1;
     break;
     
@@ -51,17 +53,17 @@ tm_node * _tm_mark_possible_ptr(void *p)
 
 void _tm_root_loop_init();
 
-void _tm_register_mark();
+void _tm_register_scan();
 
 void _tm_set_stack_ptr(void *stackvar);
-void _tm_stack_mark();
+void _tm_stack_scan();
 
-void _tm_root_mark_all();
-int _tm_root_mark_some();
+void _tm_root_scan_all();
+int _tm_root_scan_some();
 
-void _tm_range_mark(const void *b, const void *e);
+void _tm_range_scan(const void *b, const void *e);
 
-size_t _tm_node_mark_some(long left);
-void _tm_node_mark_all();
+size_t _tm_node_scan_some(long left);
+void _tm_node_scan_all();
 
 #endif
