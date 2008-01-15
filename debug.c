@@ -265,3 +265,85 @@ void tm_validate_lists()
 }
 
 
+/***************************************************************************/
+/* Sweeping */
+
+
+#ifndef _tm_sweep_is_error
+int _tm_sweep_is_error = 0;
+#endif
+
+int _tm_check_sweep_error()
+{
+  tm_type *t;
+  tm_node *n;
+
+  if ( ! _tm_sweep_is_error ) {
+    return 0;
+  }
+
+  if ( ! tm.n[tm_ECRU] ) {
+    return 0;
+  }
+
+  tm_msg("Fatal %lu dead nodes; there should be no sweeping.\n", tm.n[tm_ECRU]);
+  tm_stop();
+  // tm_validate_lists();
+  
+  tm_list_LOOP(&tm.types, t);
+  {
+    tm_list_LOOP(&t->color_list[tm_ECRU], n);
+    {
+      tm_assert_test(tm_node_color(n) == tm_ECRU);
+      tm_msg("Fatal node %p color %s size %lu should not be sweeped!\n", 
+	     (void*) n, 
+	     tm_color_name[tm_node_color(n)], 
+	     (unsigned long) t->size);
+      {
+	void ** vpa = tm_node_to_ptr(n);
+	tm_msg("Fatal cons (%d, %p)\n", ((int) vpa[0]) >> 2, vpa[1]);
+	}
+    }
+    tm_list_LOOP_END;
+  }
+  tm_list_LOOP_END;
+  
+  tm_print_stats();
+  
+  /* Attempting to mark all roots. */
+  _tm_phase_init(tm_ROOT);
+  _tm_root_scan_all();
+  
+  /* Scan all marked nodes. */
+  _tm_phase_init(tm_SCAN);
+  _tm_node_scan_all();
+  
+  if ( tm.n[tm_ECRU] ) {
+    tm_msg("Fatal after root mark: still missing %lu references.\n",
+	   (unsigned long) tm.n[tm_ECRU]);
+  } else {
+    tm_msg("Fatal after root mark: OK, missing references found!\n");
+  }
+  
+  tm_list_LOOP(&tm.types, t);
+  {
+    tm_list_LOOP(&t->color_list[tm_ECRU], n);
+    {
+      tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
+    }
+    tm_list_LOOP_END;
+  }
+  tm_list_LOOP_END;
+  
+  _tm_phase_init(tm_ALLOC);
+  tm_assert_test(tm.n[tm_ECRU] == 0);
+  
+  tm_stop();
+  
+  /* Clear worst alloc time. */
+  memset(&tm.ts_alloc.tw, 0, sizeof(tm.ts_alloc.tw));
+  
+  return 1;
+}
+
+

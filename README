@@ -1,4 +1,4 @@
-$Id: README,v 1.5 2008-01-14 16:09:58 stephens Exp $
+$Id: README,v 1.6 2008-01-15 05:21:03 stephens Exp $
 
 	Introduction
 
@@ -14,3 +14,10 @@ periods of time.
 
 See http://kurtstephens.com/research/tredmill
 
+
+    To Do
+
+* Implement allocations larger than tm_block_SIZE.
+* Implement aligned allocations using a page-indexed bit vector.
+** Flag a bit for the beginning page of the aligned block.
+** Use a hash table to map the address of the aligned block to a tm_block containing its own tm_type.

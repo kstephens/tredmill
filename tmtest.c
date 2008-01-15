@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.16 2008-01-15 01:41:00 stephens Exp $ */
+/* $Id: tmtest.c,v 1.17 2008-01-15 05:21:03 stephens Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -54,7 +54,7 @@ static void *my_alloc(size_t size)
   my_alloc_id = tm.alloc_id;
 
 #if 0
-  if ( tm_sweep_is_error ) {
+  if ( _tm_sweep_is_error ) {
     tm_gc_full();
   }
 #endif
@@ -172,7 +172,7 @@ static void test3()
 
   tm_gc_full();
   tm_gc_full();
-  tm_sweep_is_error = SWEEP_IS_ERROR;
+  _tm_sweep_is_error = SWEEP_IS_ERROR;
 
   for ( i = 0; i < nalloc; i ++ ) {
     size_t size = (1 << (i & 3)) * 8;
@@ -187,7 +187,7 @@ static void test3()
 
   tm_gc_full();
 
-  tm_sweep_is_error = 0;
+  _tm_sweep_is_error = 0;
 
   end_test();
 }
@@ -303,7 +303,7 @@ static void test4()
   my_cons *root = 0;
 
   tm_gc_full();
-  tm_sweep_is_error = SWEEP_IS_ERROR;
+  _tm_sweep_is_error = SWEEP_IS_ERROR;
 
   for ( i = 0; i < nalloc; i ++ ) {
     my_cons *c = my_cons_(root, nsize);
@@ -312,7 +312,7 @@ static void test4()
     // print_my_cons_list(root);
   }
 
-  tm_sweep_is_error = 0;
+  _tm_sweep_is_error = 0;
 
   // print_my_cons_list("test4 root", root);
 
@@ -362,7 +362,7 @@ static void test6()
 
   tm_gc_full();
 
-  tm_sweep_is_error = SWEEP_IS_ERROR;
+  _tm_sweep_is_error = SWEEP_IS_ERROR;
 
   tm_msg_enable("w", 1);
   for ( i = 0; i < nalloc; i ++ ) {
@@ -372,7 +372,7 @@ static void test6()
     rp = &(c->cdr);
   }
 
-  tm_sweep_is_error = 0;
+  _tm_sweep_is_error = 0;
 
   print_my_cons_list("test6", root);
 

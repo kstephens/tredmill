@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.17 2008-01-15 01:41:00 stephens Exp $ */
+/* $Id: tm.c,v 1.18 2008-01-15 05:21:03 stephens Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -84,8 +84,6 @@ int tm_stack_growth(char *ptr, int depth)
 }
 
 
-
-static 
 void _tm_phase_init(int p)
 {
   tm_msg("p %s\n", tm_phase_name[p]);
@@ -1205,84 +1203,6 @@ tm_type *tm_size_to_type(size_t size)
 /* Sweeping */
 
 
-#ifndef tm_sweep_is_error
-int tm_sweep_is_error = 0;
-#endif
-
-static int tm_check_sweep_error()
-{
-  tm_type *t;
-  tm_node *n;
-
-  if ( tm_sweep_is_error ) {
-    if ( tm.n[tm_ECRU] ) {
-      tm_msg("Fatal %lu dead nodes; there should be no sweeping.\n", tm.n[tm_ECRU]);
-      tm_stop();
-      // tm_validate_lists();
-
-      tm_list_LOOP(&tm.types, t);
-      {
-	tm_list_LOOP(&t->color_list[tm_ECRU], n);
-	{
-	  tm_assert_test(tm_node_color(n) == tm_ECRU);
-	  tm_msg("Fatal node %p color %s size %lu should not be sweeped!\n", 
-		 (void*) n, 
-		 tm_color_name[tm_node_color(n)], 
-		 (unsigned long) t->size);
-	  {
-	    void ** vpa = tm_node_to_ptr(n);
-	    tm_msg("Fatal cons (%d, %p)\n", ((int) vpa[0]) >> 2, vpa[1]);
-	  }
-	}
-	tm_list_LOOP_END;
-      }
-      tm_list_LOOP_END;
-      
-      tm_print_stats();
-
-      /* Attempting to mark all roots. */
-      _tm_phase_init(tm_ROOT);
-      _tm_root_scan_all();
-
-      /* Scan all marked nodes. */
-      _tm_phase_init(tm_SCAN);
-      _tm_node_scan_all();
-
-      if ( tm.n[tm_ECRU] ) {
-	tm_msg("Fatal after root mark: still missing %lu references.\n",
-	       (unsigned long) tm.n[tm_ECRU]);
-      } else {
-	tm_msg("Fatal after root mark: OK, missing references found!\n");
-      }
-
-      tm_list_LOOP(&tm.types, t);
-      {
-	tm_list_LOOP(&t->color_list[tm_ECRU], n);
-	{
-	  tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
-	}
-	tm_list_LOOP_END;
-      }
-      tm_list_LOOP_END;
-
-      _tm_phase_init(tm_ALLOC);
-      tm_assert_test(tm.n[tm_ECRU] == 0);
-
-      tm_stop();
-
-      /* Clear worst alloc time. */
-      memset(&tm.ts_alloc.tw, 0, sizeof(tm.ts_alloc.tw));
-
-      return 1;
-    }
-  }
-  return 0;
-}
-
-
-/*********************************************************************/
-
-
 static __inline 
 void _tm_node_sweep(tm_node *n, tm_block *b)
 {
@@ -1313,7 +1233,7 @@ size_t _tm_node_sweep_some(int left)
   size_t count = 0, bytes = 0;
 
   if ( tm.n[tm_ECRU] ) {
-    if ( tm_check_sweep_error() )
+    if ( _tm_check_sweep_error() )
       return 0;
   
     tm_node_LOOP(tm_ECRU);
@@ -1488,13 +1408,13 @@ void _tm_gc_clear_stats()
 }
 
 
-void tm_gc_full_inner_type(tm_type *type)
+void _tm_gc_full_type_inner(tm_type *type)
 {
   int try = 0;
 
   tm_msg("gc {\n");
 
-  tm_sweep_is_error = 0;
+  _tm_sweep_is_error = 0;
 
   while ( try ++ < 2) {
     /* Unmark all marked nodes. */
@@ -1516,6 +1436,11 @@ void tm_gc_full_inner_type(tm_type *type)
     _tm_node_sweep_all();
     tm_assert_test(tm.n[tm_ECRU] == 0);
     
+    /* Unmark all marked nodes. */
+    _tm_phase_init(tm_ALLOC);
+    _tm_node_unmark_all();
+    tm_assert_test(tm.n[tm_BLACK] == 0);
+
     /* Sweep some blocks? */
     while ( _tm_block_sweep_some() ) {
     }
@@ -1529,9 +1454,9 @@ void tm_gc_full_inner_type(tm_type *type)
 }
 
 
-void tm_gc_full_inner()
+void _tm_gc_full_inner()
 {
-  tm_gc_full_inner_type(0);
+  _tm_gc_full_type_inner(0);
 }
 
 
@@ -1584,7 +1509,7 @@ void *_tm_type_alloc_node_from_free_list(tm_type *t)
 }
 
 
-void tm_free_inner(void *ptr)
+void _tm_free_inner(void *ptr)
 {
   tm_block *b;
   tm_node *n;
@@ -1597,7 +1522,7 @@ void tm_free_inner(void *ptr)
 }
 
 
-void *tm_alloc_type_inner(tm_type *t)
+void *_tm_alloc_type_inner(tm_type *t)
 {
   void *ptr;
 #if tm_TIME_STAT
@@ -1757,7 +1682,7 @@ void *tm_alloc_type_inner(tm_type *t)
     if ( tm.nodes_allocated_since_gc > 1000 &&
 	 tm.nodes_allocated_since_gc > tm.nodes_in_use_after_gc * 3 / 4 ) {
       fprintf(stderr, "  TM: memory pressure high, full gc\n");
-      tm_gc_full_inner();
+      _tm_gc_full_inner();
     }
 #endif
 
@@ -1775,14 +1700,20 @@ void *tm_alloc_type_inner(tm_type *t)
   // tm_validate_lists();
 
   /* Validate tm_ptr_to_node() */
-#if 0
+#if tm_ptr_to_node_TEST
   if ( ptr ) {
     char *p = ptr;
     tm_node *n = (void*) (p - tm_node_HDR_SIZE);
-    tm_assert_test(tm_ptr_to_node(p) == n);
-    tm_assert_test(tm_ptr_to_node(p + t->size / 2) == n);
-    /* Only if tm_ptr_AT_NODE_END_VALID */
-    tm_assert_test(tm_ptr_to_node(p + t->size) == n);
+    tm_assert(tm_ptr_to_node(n) == 0);
+    tm_assert(tm_ptr_to_node(p) == n);
+    tm_assert(tm_ptr_to_node(p + 1) == n);
+    tm_assert(tm_ptr_to_node(p + t->size / 2) == n);
+    tm_assert(tm_ptr_to_node(p + t->size - 1) == n);
+#if tm_ptr_AT_END_IS_VALID
+    tm_assert(tm_ptr_to_node(p + t->size) == n);
+#else
+    tm_assert(tm_ptr_to_node(p + t->size) == 0);
+#endif
   }
 #endif
 
@@ -1790,25 +1721,25 @@ void *tm_alloc_type_inner(tm_type *t)
 }
 
 
-void *tm_alloc_inner(size_t size)
+void *_tm_alloc_inner(size_t size)
 {
   tm_type *type = tm_size_to_type(size);
   tm.alloc_request_size = size;
   tm.alloc_request_type = type;
-  return tm_alloc_type_inner(type);  
+  return _tm_alloc_type_inner(type);  
 }
 
 
-void *tm_alloc_desc_inner(tm_adesc *desc)
+void *_tm_alloc_desc_inner(tm_adesc *desc)
 {
   tm_type *type = (tm_type*) desc->hidden;
   tm.alloc_request_size = type->size;
   tm.alloc_request_type = type;
-  return tm_alloc_type_inner(type);
+  return _tm_alloc_type_inner(type);
 }
 
 
-void *tm_realloc_inner(void *oldptr, size_t size)
+void *_tm_realloc_inner(void *oldptr, size_t size)
 {
   char *ptr = 0;
   tm_type *t, *oldt;
@@ -1819,7 +1750,7 @@ void *tm_realloc_inner(void *oldptr, size_t size)
   if ( oldt == t ) {
     ptr = oldptr;
   } else {
-    ptr = tm_alloc_inner(size);
+    ptr = _tm_alloc_inner(size);
     memcpy(ptr, oldptr, size < oldt->size ? size : oldt->size);
   }
   
@@ -1834,7 +1765,7 @@ void *tm_realloc_inner(void *oldptr, size_t size)
 /* Avoid leaving garbage on the stack. */
 /* Don't put this in user.c, so it cannot be optimized away. */
 
-void _tm_clear_some_stack_words()
+void __tm_clear_some_stack_words()
 {
   int some_words[64];
   memset(some_words, 0, sizeof(some_words));

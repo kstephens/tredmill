@@ -1,4 +1,4 @@
-/* $Id: tm.h,v 1.9 2008-01-14 00:08:02 stephens Exp $ */
+/* $Id: tm.h,v 1.10 2008-01-15 05:21:03 stephens Exp $ */
 #ifndef _tredmill_tm_h
 #define _tredmill_tm_h
 
@@ -7,6 +7,13 @@
 
 #include <stddef.h> /* size_t */
 #include <stdio.h> /* FILE */
+
+/*******************************************************************************/
+/* Configuration */
+
+#ifndef tm_ptr_TO_END_IS_VALID
+#define tm_ptr_TO_END_IS_VALID 0
+#endif
 
 /*******************************************************************************/
 /* Allocation descriptor */

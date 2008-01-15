@@ -2,8 +2,13 @@
 #define tm_PTR_H
 
 
+#ifdef  tm_ptr_to_node_TEST
+#define tm_ptr_to_node_TEST 0
+#endif
+
+
 /****************************************************************************/
-/* Structure lookup. */
+/* Pointer determination. */
 
 
 static __inline 
@@ -79,6 +84,7 @@ tm_node *tm_ptr_to_node(void *p)
 {
   tm_block *b;
 
+#if tm_ptr_AT_END_IS_VALID
   /*
   ** A pointer directly at the end of block should be considered
   ** a pointer into the block before it.
@@ -87,6 +93,7 @@ tm_node *tm_ptr_to_node(void *p)
     /* This allows _tm_page_in_use(p) to pass. */
     p = p - 1;
   }
+#endif
 
   /* Avoid out of range pointers. */
 #if 1
@@ -120,25 +127,27 @@ tm_node *tm_ptr_to_node(void *p)
     tm_node *n;
     
     /*
-    ** Translate away block header.
+    ** Translate away the block header.
     */
     pp -= (unsigned long) b + tm_block_HDR_SIZE;
 
-    /*
-    ** If the pointer is directly after a node boundary
-    ** assume it's a pointer to the node before.
-    ** 
-    ** node0               node1
-    ** +---------------...-+---------------...-+...
-    ** | tm_node | t->size | tm_node | t->size |
-    ** +---------------...-+---------------...-+...
-    ** ^                   ^
-    ** |                   |
-    ** new pp              pp
-    */
+
     {
       unsigned long node_off = pp % node_size;
 
+#if tm_ptr_AT_END_IS_VALID
+      /*
+      ** If the pointer is directly after a node boundary
+      ** assume it's a pointer to the node before.
+      ** 
+      ** node0               node1
+      ** +---------------...-+---------------...-+...
+      ** | tm_node | t->size | tm_node | t->size |
+      ** +---------------...-+---------------...-+...
+      ** ^                   ^
+      ** |                   |
+      ** new pp              pp
+      */
       if ( node_off == 0 && pp ) {
 	pp -= node_size;
 
@@ -146,9 +155,13 @@ tm_node *tm_ptr_to_node(void *p)
 	** Translate back to block header.
 	*/
 	pp += (unsigned long) b + tm_block_HDR_SIZE;
-	
+
+#if 0	
  	tm_msg("P nb p%p p0%p\n", (void*) p, (void*) pp);
-      }
+#endif
+      } else
+#endif
+
       /*
       ** If the pointer in the node header
       ** it's not a pointer into the node data.
@@ -161,9 +174,10 @@ tm_node *tm_ptr_to_node(void *p)
       **                         |
       **                         pp
       */
-      else if ( node_off < tm_node_HDR_SIZE ) {
+      if ( node_off < tm_node_HDR_SIZE ) {
 	return 0;
-      } 
+      }
+
       /*
       ** Remove intra-node offset.
       ** 
@@ -184,7 +198,6 @@ tm_node *tm_ptr_to_node(void *p)
 	pp += (unsigned long) b + tm_block_HDR_SIZE;
       }
     }
-
 
     /* It's a node. */
     n = (tm_node*) pp;

@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.14 2008-01-15 01:41:00 stephens Exp $ */
+/* $Id: internal.h,v 1.15 2008-01-15 05:21:03 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -12,6 +12,9 @@
 
 #include "tredmill/debug.h"
 #include "tredmill/barrier.h"
+
+#include "util/bitset.h" /* bitset_t */
+
 
 #include <limits.h>
 #ifndef PAGESIZE
@@ -249,17 +252,17 @@ struct tm_data {
   size_t os_alloc_last_size; 
   void * os_alloc_expected; /* The next ptr expected from _tm_os_alloc_(). */
 
-#define tm_BITMAP_SIZE (tm_address_range_k / (tm_page_SIZE / 1024) / (sizeof(unsigned int) * 8))
+#define tm_BITMAP_SIZE (tm_address_range_k / (tm_page_SIZE / 1024) / bitset_ELEM_BSIZE)
 
   /* A bit map of pages with nodes in use. */
   /* Addressable by tm_page_SIZE. */
-  unsigned int page_in_use[tm_BITMAP_SIZE];
+  bitset_t page_in_use[tm_BITMAP_SIZE];
 
   /* A bit map of pages containing allocated block headers. */
-  unsigned int block_header[tm_BITMAP_SIZE];
+  bitset_t block_header[tm_BITMAP_SIZE];
 
   /* A bit map of large blocks. */
-  unsigned int block_large[tm_BITMAP_SIZE];
+  bitset_t block_large[tm_BITMAP_SIZE];
 
   /* A list of free tm_blocks not returned to os. */
   tm_list free_blocks;
@@ -390,23 +393,25 @@ extern struct tm_data tm;
 /****************************************************************************/
 /* Internal procs. */
 
+
+void _tm_phase_init(int p);
 void tm_node_set_color(tm_node *n, tm_block *b, tm_color c);
 
-void tm_set_stack_ptr(void* ptr);
+void _tm_set_stack_ptr(void* ptr);
 
 /* Clears the stack and initialize register root set. */
-void _tm_clear_some_stack_words();
-#define tm_clear_some_stack_words() \
+void __tm_clear_some_stack_words();
+#define _tm_clear_some_stack_words() \
 setjmp(tm.jb); \
-_tm_clear_some_stack_words()
+__tm_clear_some_stack_words()
 
 
-void *tm_alloc_inner(size_t size);
-void *tm_alloc_desc_inner(tm_adesc *desc);
-void *tm_realloc_inner(void *ptr, size_t size);
-void tm_free_inner(void *ptr);
+void *_tm_alloc_inner(size_t size);
+void *_tm_alloc_desc_inner(tm_adesc *desc);
+void *_tm_realloc_inner(void *ptr, size_t size);
+void _tm_free_inner(void *ptr);
 
-void tm_gc_full_inner();
+void _tm_gc_full_inner();
 
 /****************************************************************************/
 /* Internals */

@@ -41,6 +41,12 @@ void _tm_assert(const char *expr, const char *file, int lineno);
 #define tm_warn(X,Y...) ((X) ? 0 : (tm_msg1("\n"), tm_msg("WARNING assertion \"%s\" failed %s:%d ", #X, __FILE__, __LINE__), tm_msg1("" Y), tm_msg1("\n"), tm_stop(), 1))
 
 
+/***************************************************************************/
+/* Validation */
+
 void tm_validate_lists();
+
+extern int _tm_sweep_is_error;
+int _tm_check_sweep_error();
 
 #endif

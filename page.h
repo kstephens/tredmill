@@ -1,44 +1,41 @@
 #ifndef tm_PAGE_H
 #define tm_PAGE_H
 
+#include "util/bitset.h"
+
+
 #define tm_ptr_is_aligned_to_block(ptr) !(((unsigned long) ptr) % tm_block_SIZE)
 #define tm_ptr_is_aligned_to_page(ptr) !(((unsigned long) ptr) % tm_page_SIZE)
+
 
 /***************************************************************************/
 /* Page bit map mgmt. */
 
-#define tm_page_index(X) (((unsigned long) X) / tm_page_SIZE)
 
-#define tm_page_index_bits (sizeof(tm.page_in_use[0]) * 8)
-#define tm_page_index_offset(I) ((I) / tm_page_index_bits)
-#define tm_page_index_bit(I) (1U << ((I) % tm_page_index_bits))
+#define tm_page_index(X) (((unsigned long) X) / tm_page_SIZE)
 
 
 static __inline 
 int _tm_page_in_use(void *ptr)
 {
-  unsigned long i = tm_page_index(ptr);
-  return 
-    tm.page_in_use[tm_page_index_offset(i)] &
-    tm_page_index_bit(i);
+  size_t i = tm_page_index(ptr);
+  return bitset_get(tm.page_in_use, i);
 }
 
 
 static __inline 
 void _tm_page_mark_used(void *ptr)
 {
-  unsigned long i = tm_page_index(ptr);
-  tm.page_in_use[tm_page_index_offset(i)] |=
-    tm_page_index_bit(i);
+  size_t i = tm_page_index(ptr);
+  bitset_set(tm.page_in_use, i);
 }
 
 
 static __inline 
 void _tm_page_mark_unused(void *ptr)
 {
-  unsigned long i = tm_page_index(ptr);
-  tm.page_in_use[tm_page_index_offset(i)] &=
-    ~tm_page_index_bit(i);
+  size_t i = tm_page_index(ptr);
+  bitset_clr(tm.page_in_use, i);
 }
 
 

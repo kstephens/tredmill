@@ -1,4 +1,4 @@
-/* $Id: user.c,v 1.9 2008-01-14 00:08:02 stephens Exp $ */
+/* $Id: user.c,v 1.10 2008-01-15 05:21:03 stephens Exp $ */
 
 #include "internal.h"
 
@@ -30,10 +30,10 @@ void *tm_alloc(size_t size)
   tm_time_stat_begin(&tm.ts_alloc);
 #endif
 
-  tm_clear_some_stack_words();
+  _tm_clear_some_stack_words();
   _tm_set_stack_ptr(&ptr);
 
-  ptr = tm_alloc_inner(size);
+  ptr = _tm_alloc_inner(size);
 
 #if tm_TIME_STAT
   tm_time_stat_end(&tm.ts_alloc);
@@ -54,9 +54,9 @@ void *tm_alloc_desc(tm_adesc *desc)
   tm_time_stat_begin(&tm.ts_alloc);
 #endif
 
-  tm_clear_some_stack_words();
+  _tm_clear_some_stack_words();
   _tm_set_stack_ptr(&ptr);
-  ptr = tm_alloc_desc_inner(desc);
+  ptr = _tm_alloc_desc_inner(desc);
 
 #if tm_TIME_STAT
   tm_time_stat_end(&tm.ts_alloc);
@@ -85,9 +85,9 @@ void *tm_realloc(void *oldptr, size_t size)
   tm_time_stat_begin(&tm.ts_alloc);
 #endif
 
-  tm_clear_some_stack_words();
+  _tm_clear_some_stack_words();
   _tm_set_stack_ptr(&ptr);
-  ptr = tm_realloc_inner(oldptr, size);
+  ptr = _tm_realloc_inner(oldptr, size);
 
 #if tm_TIME_STAT
   tm_time_stat_end(&tm.ts_alloc);
@@ -110,9 +110,9 @@ void tm_free(void *ptr)
   tm_time_stat_begin(&tm.ts_free);
 #endif
 
-  tm_clear_some_stack_words();
+  _tm_clear_some_stack_words();
   _tm_set_stack_ptr(&ptr);
-  tm_free_inner(ptr);
+  _tm_free_inner(ptr);
 
 #if tm_TIME_STAT
   tm_time_stat_end(&tm.ts_free);
@@ -135,10 +135,10 @@ void tm_gc_full()
   tm_time_stat_begin(&tm.ts_gc);
 #endif
 
-  tm_clear_some_stack_words();
+  _tm_clear_some_stack_words();
   _tm_set_stack_ptr(&ptr);
 
-  tm_gc_full_inner();
+  _tm_gc_full_inner();
 
 #if tm_TIME_STAT
   tm_time_stat_end(&tm.ts_gc);
