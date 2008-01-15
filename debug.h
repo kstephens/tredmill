@@ -32,7 +32,7 @@ void _tm_assert(const char *expr, const char *file, int lineno);
 
 #define tm_assert(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
 
-#if 0
+#if 1
 #define tm_assert_test(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
 #else
 #define tm_assert_test(X,Y...)(void)0
@@ -40,5 +40,7 @@ void _tm_assert(const char *expr, const char *file, int lineno);
 
 #define tm_warn(X,Y...) ((X) ? 0 : (tm_msg1("\n"), tm_msg("WARNING assertion \"%s\" failed %s:%d ", #X, __FILE__, __LINE__), tm_msg1("" Y), tm_msg1("\n"), tm_stop(), 1))
 
+
+void tm_validate_lists();
 
 #endif

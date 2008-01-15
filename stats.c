@@ -25,86 +25,8 @@ static __inline double tv_2_double(struct timeval *t)
 #endif
 
 
-void tm_validate_lists()
-{
-  int j;
-  tm_type *t;
-  tm_block *b;
-  tm_node *node;
-  size_t n[tm__LAST2];
-  size_t bn[tm__LAST2];
-  size_t tn[tm__LAST2];
-
-  memset(n, 0, sizeof(n));
-  memset(bn, 0, sizeof(bn));
-
-#if 0
-  fprintf(tm_msg_file, "V");
-  fflush(tm_msg_file);
-#endif
-
-  /* Validate free block list. */
-  tm_assert(tm_list_color(&tm.free_blocks) == tm_FREE_BLOCK);
-  tm_list_LOOP(&tm.free_blocks, b);
-  {
-    _tm_block_validate(b);
-    tm_assert(tm_list_color(b) == tm_FREE_BLOCK);
-    tm_assert(b->type == 0);
-  }
-  tm_list_LOOP_END;
-
-  /* Validate types. */
-  tm_assert(tm_list_color(&tm.types) == tm_LIVE_TYPE);
-  tm_list_LOOP(&tm.types, t);
-  {
-    tm_assert(tm_list_color(t) == tm_LIVE_TYPE);
-
-    /* Validate type totals. */
-    memset(tn, 0, sizeof(n));
-
-    /* Validate type blocks. */
-    bn[tm_B] = 0;
-    tm_assert(tm_list_color(&t->blocks) == tm_LIVE_BLOCK);
-    tm_list_LOOP(&t->blocks, b);
-    {
-      _tm_block_validate(b);
-      tm_assert(tm_list_color(b) == tm_LIVE_BLOCK);
-      tm_assert(b->type == t);
-      ++ bn[tm_B];
-    }
-    tm_list_LOOP_END;
-    tm_assert(bn[tm_B] == t->n[tm_B]);
-
-    /* Validate colored node lists. */
-    for ( j = 0; j < sizeof(t->l)/sizeof(t->l[0]); j ++ ) {
-      /* Validate lists. */
-      tm_assert(tm_list_color(&t->l[j]) == j);
-      tm_list_LOOP(&t->l[j], node);
-      {
-	tm_assert(tm_node_color(node) == j);
-	++ tn[j];
-      }
-      tm_list_LOOP_END;
-
-      tm_assert(t->n[j] == tn[j]);
-      tn[tm_TOTAL] += tn[j];
-      n[j] += tn[j];
-      n[tm_TOTAL] += tn[j];
-    }
-    tm_assert(t->n[tm_TOTAL] == tn[tm_TOTAL]);
-  }
-  tm_list_LOOP_END;
-
-  /* Validate global node color counters. */
-  tm_assert(n[tm_WHITE] == tm.n[tm_WHITE]);
-  tm_assert(n[tm_ECRU] == tm.n[tm_ECRU]);
-  tm_assert(n[tm_GREY] == tm.n[tm_GREY]);
-  tm_assert(n[tm_BLACK] == tm.n[tm_BLACK]);
-  tm_assert(n[tm_TOTAL] == tm.n[tm_TOTAL]);
-}
-
-
-void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size_t *sum)
+static
+void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size_t *sum)
 {
   int j;
 
@@ -116,7 +38,6 @@ void tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size_
     case tm_ALLOC:
     case tm_ROOT:
     case tm_SCAN:
-    case tm_UNMARK:
       n[tm_NU] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
       break;
       
@@ -181,7 +102,7 @@ void tm_print_stats()
   tm_list_LOOP(&tm.types, t);
   {
     tm_msg("X  t#%d S%-6lu\n", t->id, (unsigned long) t->size, (unsigned) t->n[tm_B]);
-    tm_print_utilization("X    ", t, t->n, sizeof(t->n)/sizeof(t->n[0]), sum);
+    _tm_print_utilization("X    ", t, t->n, sizeof(t->n)/sizeof(t->n[0]), sum);
   }
   tm_list_LOOP_END;
 
@@ -191,7 +112,7 @@ void tm_print_stats()
   sum[tm_B_OS_M] = tm.n[tm_B_OS_M];
   sum[tm_b_OS_M] = tm.n[tm_b_OS_M];
 
-  tm_print_utilization("X  S ", 0, sum, sizeof(sum)/sizeof(sum[0]), sum);
+  _tm_print_utilization("X  S ", 0, sum, sizeof(sum)/sizeof(sum[0]), sum);
 
   tm_msg("X }\n");
 
@@ -242,7 +163,6 @@ void tm_print_block_stats()
 
   tm_msg_enable("X", 0);
 }
-
 
 
 /***************************************************************************/
@@ -385,7 +305,9 @@ void tm_print_time_stats()
   tm_time_stat_print_(&tm.ts_barrier, ~0, 0);
   tm_time_stat_print_(&tm.ts_barrier_black, ~0, 0);
 
-  for ( i = 0; i < (sizeof(tm.ts_phase)/sizeof(tm.ts_phase[0])); ++ i ) {
+  for ( i = 0; 
+	i < (sizeof(tm.ts_phase) / sizeof(tm.ts_phase[0]));
+	++ i ) {
     tm_time_stat_print_(&tm.ts_phase[i], ~0, &tm.alloc_by_phase[i]);
   }
 

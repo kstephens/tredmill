@@ -36,7 +36,6 @@ const char *tm_phase_name[] = {
   "ROOTS",  /* tm_ROOT */
   "SCAN",   /* tm_SCAN */
   "SWEEP",  /* tm_SWEEP */
-  "UNMARK", /* tm_UNMARK */
   0
 };
 
@@ -56,6 +55,7 @@ const char *tm_msg_enable_default =
 ;
 
 int tm_msg_enable_all = 0;
+
 
 /****************************************************************************/
 /* Debugging. */
@@ -86,12 +86,12 @@ void tm_msg(const char *format, ...)
   if ( (tm.msg_ignored = ! tm.msg_enable_table[(unsigned char) format[0]]) )
     return;
 
+  if ( ! *format )
+    return;
+
   /* Default tm_msg_file. */
   if ( ! tm_msg_file )
     tm_msg_file = stderr;
-
-  if ( ! *format )
-    return;
 
   /* Print header. */
   fprintf(tm_msg_file, "%s%s%c %6lu t#%d[%lu] ",
@@ -114,6 +114,7 @@ void tm_msg(const char *format, ...)
   // fgetc(stdin);
 }
 
+
 void tm_msg1(const char *format, ...)
 {
   va_list vap;
@@ -131,6 +132,7 @@ void tm_msg1(const char *format, ...)
 
   fflush(tm_msg_file);
 }
+
 
 /****************************************************************************/
 /* Generalize error handling. */
@@ -168,12 +170,98 @@ void tm_abort()
 
 
 /**************************************************************************/
-/* assertions, warnings. */
+/* Assertions, warnings. */
 
 void _tm_assert(const char *expr, const char *file, int lineno)
 {
   tm_msg("\n");
   tm_msg("Fatal assertion \"%s\" failed %s:%d ", expr, file, lineno);
+}
+
+
+/**************************************************************************/
+/* Validations. */
+
+
+void tm_validate_lists()
+{
+  int j;
+  tm_type *t;
+  tm_block *b;
+  tm_node *node;
+  size_t n[tm__LAST2];
+  size_t bn[tm__LAST2];
+  size_t tn[tm__LAST2];
+
+  memset(n, 0, sizeof(n));
+  memset(bn, 0, sizeof(bn));
+
+#if 0
+  fprintf(tm_msg_file, "V");
+  fflush(tm_msg_file);
+#endif
+
+  /* Validate free block list. */
+  tm_assert(tm_list_color(&tm.free_blocks) == tm_FREE_BLOCK);
+  tm_list_LOOP(&tm.free_blocks, b);
+  {
+    _tm_block_validate(b);
+    tm_assert(tm_list_color(b) == tm_FREE_BLOCK);
+    tm_assert(b->type == 0);
+    tm_assert(b->alloc == b->begin);
+  }
+  tm_list_LOOP_END;
+
+  /* Validate types. */
+  tm_assert(tm_list_color(&tm.types) == tm_LIVE_TYPE);
+  tm_list_LOOP(&tm.types, t);
+  {
+    tm_assert(tm_list_color(t) == tm_LIVE_TYPE);
+
+    /* Validate type totals. */
+    memset(tn, 0, sizeof(n));
+
+    /* Validate type blocks. */
+    bn[tm_B] = 0;
+    tm_assert(tm_list_color(&t->blocks) == tm_LIVE_BLOCK);
+    tm_list_LOOP(&t->blocks, b);
+    {
+      _tm_block_validate(b);
+      tm_assert(tm_list_color(b) == tm_LIVE_BLOCK);
+      tm_assert(b->type == t);
+      ++ bn[tm_B];
+    }
+    tm_list_LOOP_END;
+    tm_assert(bn[tm_B] == t->n[tm_B]);
+
+    /* Validate colored node lists. */
+    for ( j = 0; 
+	  j < sizeof(t->color_list) / sizeof(t->color_list[0]); 
+	  ++ j ) {
+      /* Validate lists. */
+      tm_assert(tm_list_color(&t->color_list[j]) == j);
+      tm_list_LOOP(&t->color_list[j], node);
+      {
+	tm_assert(tm_node_color(node) == j);
+	++ tn[j];
+      }
+      tm_list_LOOP_END;
+
+      tm_assert(t->n[j] == tn[j]);
+      tn[tm_TOTAL] += tn[j];
+      n[j] += tn[j];
+      n[tm_TOTAL] += tn[j];
+    }
+    tm_assert(t->n[tm_TOTAL] == tn[tm_TOTAL]);
+  }
+  tm_list_LOOP_END;
+
+  /* Validate global node color counters. */
+  tm_assert(n[tm_WHITE] == tm.n[tm_WHITE]);
+  tm_assert(n[tm_ECRU]  == tm.n[tm_ECRU]);
+  tm_assert(n[tm_GREY]  == tm.n[tm_GREY]);
+  tm_assert(n[tm_BLACK] == tm.n[tm_BLACK]);
+  tm_assert(n[tm_TOTAL] == tm.n[tm_TOTAL]);
 }
 
 

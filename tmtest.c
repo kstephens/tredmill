@@ -1,4 +1,4 @@
-/* $Id: tmtest.c,v 1.15 2008-01-14 16:09:58 stephens Exp $ */
+/* $Id: tmtest.c,v 1.16 2008-01-15 01:41:00 stephens Exp $ */
 #include "tm.h"
 #include <stdio.h>
 #include <stdlib.h> /* rand() */
@@ -296,6 +296,7 @@ static void *my_cons_(void *d, int nsize)
 }
 
 
+/* Generates lists with circular references. */
 static void test4()
 {
   int i;
@@ -307,24 +308,25 @@ static void test4()
   for ( i = 0; i < nalloc; i ++ ) {
     my_cons *c = my_cons_(root, nsize);
     root = c;
+    tm_write_barrier(&root);
     // print_my_cons_list(root);
   }
 
   tm_sweep_is_error = 0;
 
-  print_my_cons_list("test4 root", root);
+  // print_my_cons_list("test4 root", root);
 
   end_test();
 
-  print_my_cons_list("test4 root", root);
+  // print_my_cons_list("test4 root", root);
 
   root = 0;
+  tm_write_barrier(&root);
 }
 
 
+/* Test global root with circular references. */
 static my_cons *test5_root = 0;
-
-
 static void test5()
 {
   int i;
@@ -338,11 +340,11 @@ static void test5()
     // print_my_cons_list(root);
   }
 
-  print_my_cons_list("test5 test5_root", test5_root);
+  // print_my_cons_list("test5 test5_root", test5_root);
 
   end_test();
 
-  print_my_cons_list("test5 test5_root", test5_root);
+  // print_my_cons_list("test5 test5_root", test5_root);
 
   test5_root = 0;
   tm_write_barrier(&test5_root);
@@ -351,6 +353,7 @@ static void test5()
 }
 
 
+/* Test cdr consing, i.e. write barrier effectiveness. */
 static void test6()
 {
   int i;
@@ -379,7 +382,9 @@ static void test6()
   tm_msg_enable("w", 0);
 
   root = 0;
+  tm_write_barrier(&root);
   rp = 0;
+  tm_write_barrier(&rp);
 }
 
 
@@ -468,7 +473,7 @@ static void test8()
   root = 0;
   tm_write_barrier(&root);
   memset(roots, 0, sizeof(roots)); 
-  tm_write_barrier(&roots);
+  tm_write_barrier(&roots); /* Need size? */
 }
 #endif
 

@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.16 2008-01-14 16:09:58 stephens Exp $ */
+/* $Id: tm.c,v 1.17 2008-01-15 01:41:00 stephens Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -59,7 +59,7 @@ static const tm_color tm_phase_alloc[] = {
   tm_DEFAULT_ALLOC_COLOR,  /* tm_ROOT */
   tm_DEFAULT_ALLOC_COLOR,  /* tm_SCAN */
   tm_SWEEP_ALLOC_COLOR,    /* tm_SWEEP */
-  tm_DEFAULT_ALLOC_COLOR   /* tm_UNMARK */
+  -1
 };
 
 #undef tm_DEFAULT_ALLOC_COLOR
@@ -101,9 +101,13 @@ void _tm_phase_init(int p)
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 0;
+    tm.unmarking = 1;
 
     /* Set up for unmarking. */
-    tm_node_LOOP_INIT(tm_BLACK);
+    // tm_node_LOOP_INIT(tm_BLACK);
+
+    /* Keep track of how many nodes are in use. */
+    tm.n[tm_NU] = tm.n[tm_BLACK];
 
     /* Write barrier. */
     _tm_write_root = __tm_write_root_ignore;
@@ -112,9 +116,10 @@ void _tm_phase_init(int p)
     break;
 
   case tm_ROOT:
-    tm.marking = 0;
+    tm.marking = 1;
     tm.scanning = 0;
     tm.sweeping = 0;
+    tm.unmarking = 0;
 
     tm.stack_mutations = tm.data_mutations = 0;
 
@@ -131,11 +136,12 @@ void _tm_phase_init(int p)
     tm.marking = 1;
     tm.scanning = 1;
     tm.sweeping = 0;
+    tm.unmarking = 0;
 
     tm.stack_mutations = tm.data_mutations = 0;
 
     /* Set up for marking. */
-    tm_node_LOOP_INIT(tm_GREY);
+    // tm_node_LOOP_INIT(tm_GREY);
 
     /* Write barrier. */
     _tm_write_root = __tm_write_root_mark;
@@ -144,30 +150,24 @@ void _tm_phase_init(int p)
     break;
 
   case tm_SWEEP:
-    tm.marking = 0;
-    tm.scanning = 0;
+    tm.marking = 1;
+    tm.scanning = 1;
     tm.sweeping = 1;
+    tm.unmarking = 0;
 
     tm_assert_test(tm.n[tm_GREY] == 0);
 
+    /* Set up for scanning. */
+    // tm_node_LOOP_INIT(tm_GREY);
+
+    /* Set up for sweeping. */
+    // tm_node_LOOP_INIT(tm_ECRU);
+
     /* Write barrier. */
+    /* Recolor mutated BLACK nodes to GREY for rescanning. */
     _tm_write_root = __tm_write_root_sweep;
     _tm_write_barrier = __tm_write_barrier_sweep;
     _tm_write_barrier_pure = __tm_write_barrier_pure_sweep;
-    break;
-
-  case tm_UNMARK:
-    tm.marking = 0;
-    tm.scanning = 0;
-    tm.sweeping = 0;
-
-    /* Keep track of how many nodes are in use. */
-    tm.n[tm_NU] = tm.n[tm_BLACK];
-
-    /* Write barrier. */
-    _tm_write_root = __tm_write_root_ignore;
-    _tm_write_barrier = __tm_write_barrier_ignore;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   default:
@@ -391,6 +391,12 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm_list_init(&tm.types);
   tm_list_set_color(&tm.types, tm_LIVE_TYPE);
 
+  /* Color iterators. */
+  tm_node_LOOP_INIT(tm_WHITE);
+  tm_node_LOOP_INIT(tm_ECRU);
+  tm_node_LOOP_INIT(tm_GREY);
+  tm_node_LOOP_INIT(tm_BLACK);
+
   /* Page managment. */
   memset(tm.page_in_use, 0, sizeof(tm.page_in_use));
 
@@ -473,7 +479,7 @@ void tm_node_set_color(tm_node *n, tm_block *b, tm_color c)
 
   _tm_node_set_color(n, b, t, c);
 
-  tm_list_remove_and_append(&t->l[c], n);
+  tm_list_remove_and_append(&t->color_list[c], n);
  
   // _tm_validate_lists();
 }
@@ -715,17 +721,24 @@ int _tm_block_reclaim_nodes(tm_block *b)
   /* Update white list stats. */
 
   /* Type node counts. */
+  tm_assert_test(t->n[tm_WHITE] >= count);
   t->n[tm_WHITE] -= count;
+  tm_assert_test(t->n[tm_TOTAL] >= count);
   t->n[tm_TOTAL] -= count;
 
   /* Block node counts. */
+  tm_assert_test(b->n[tm_WHITE] >= count);
   b->n[tm_WHITE] -= count;
   tm_assert_test(b->n[tm_WHITE] == 0);
+
+  tm_assert_test(b->n[tm_TOTAL] >= count);
   b->n[tm_TOTAL] -= count;
   tm_assert_test(b->n[tm_TOTAL] == 0);
 
   /* Global node counts. */
+  tm_assert_test(tm.n[tm_WHITE] >= count);
   tm.n[tm_WHITE] -= count;
+  tm_assert_test(tm.n[tm_TOTAL] >= count);
   tm.n[tm_TOTAL] -= count;
 
   return count;
@@ -897,7 +910,7 @@ void _tm_node_delete(tm_node *n, tm_block *b)
   t = b->type;
   tm_assert_test(nc == tm_WHITE);
 
-#if 0 /* See _tm_type_reclaim_nodes() */
+#if 0 /* See _tm_block_reclaim_nodes() */
   /* Type node counts. */
   tm_assert_test(t->n[tm_TOTAL]);
   -- t->n[tm_TOTAL];
@@ -905,15 +918,15 @@ void _tm_node_delete(tm_node *n, tm_block *b)
   -- t->n[nc];
 
   /* Block node counts. */
-  tm_assert_test(b->n[tm_TOTAL]);
+  tm_assert_test(b->n[tm_TOTAL] > 0);
   -- b->n[tm_TOTAL];
-  tm_assert_test(b->n[nc]);
+  tm_assert_test(b->n[nc]) > 0);
   -- b->n[nc];
 
   /* Global node counts. */
-  tm_assert_test(tm.n[tm_TOTAL]);
+  tm_assert_test(tm.n[tm_TOTAL] > 0);
   -- tm.n[tm_TOTAL];
-  tm_assert_test(tm.n[nc]);
+  tm_assert_test(tm.n[nc] > 0);
   -- tm.n[nc];
 #endif
 
@@ -1035,9 +1048,9 @@ tm_type *tm_type_new(size_t size)
   {
     int j;
     
-    for ( j = 0; j < sizeof(t->l)/sizeof(t->l[0]); j ++ ) {
-      tm_list_init(&t->l[j]);
-      tm_list_set_color(&t->l[j], j);
+    for ( j = 0; j < sizeof(t->color_list) / sizeof(t->color_list[0]); j ++ ) {
+      tm_list_init(&t->color_list[j]);
+      tm_list_set_color(&t->color_list[j], j);
     }
   }
 
@@ -1209,7 +1222,7 @@ static int tm_check_sweep_error()
 
       tm_list_LOOP(&tm.types, t);
       {
-	tm_list_LOOP(&t->l[tm_ECRU], n);
+	tm_list_LOOP(&t->color_list[tm_ECRU], n);
 	{
 	  tm_assert_test(tm_node_color(n) == tm_ECRU);
 	  tm_msg("Fatal node %p color %s size %lu should not be sweeped!\n", 
@@ -1244,7 +1257,7 @@ static int tm_check_sweep_error()
 
       tm_list_LOOP(&tm.types, t);
       {
-	tm_list_LOOP(&t->l[tm_ECRU], n);
+	tm_list_LOOP(&t->color_list[tm_ECRU], n);
 	{
 	  tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
 	}
@@ -1305,11 +1318,15 @@ size_t _tm_node_sweep_some(int left)
   
     tm_node_LOOP(tm_ECRU);
     {
+      tm_assert_test(tm_node_color(n) == tm_ECRU);
+
       _tm_node_sweep(n, tm_node_to_block(n));
+
       bytes += t->size;
       ++ count;
+
       if ( -- left <= 0 ) {
-	tm_node_LOOP_BREAK();
+	tm_node_LOOP_BREAK(tm_ECRU);
       }
     }
     tm_node_LOOP_END(tm_ECRU);
@@ -1334,22 +1351,23 @@ size_t _tm_node_sweep_some_for_type(tm_type *t, int left)
   tm_node *n;
 
   if ( t->n[tm_ECRU] ) {
-    /* Move the global sweep pointer away from t. */
-    if ( tm.tp[tm_ECRU] == t ) {
-      tm.tp[tm_ECRU] = tm_list_next(t);
-      tm.np[tm_ECRU] = tm_list_next(&tm.tp[tm_ECRU]->l[tm_ECRU]);
-    }
-
     while ( t->n[tm_ECRU] ) {
-      n = tm_list_first(&t->l[tm_ECRU]);
+      n = tm_list_first(&t->color_list[tm_ECRU]);
       _tm_node_sweep(n, tm_node_to_block(n));
+
       bytes += t->size;
       ++ count;
+
       if ( -- left <= 0 ) {
 	break;
       }
     }
   }
+
+#if 0
+  /* Move the global sweep pointer away from t. */
+  tm_node_LOOP_INIT(tm_ECRU);
+#endif
 
   /* Update allocation stats. */
   tm.n[tm_b] -= bytes;
@@ -1420,11 +1438,14 @@ size_t _tm_node_unmark_some(long left)
     tm_node_LOOP(tm_BLACK);
     {
       tm_assert_test(tm_node_color(n) == tm_BLACK);
+
       tm_node_set_color(n, tm_node_to_block(n), tm_ECRU);
+
       bytes += t->size;
       ++ count;
+
       if ( -- left <= 0 ) {
-	tm_node_LOOP_BREAK();
+	tm_node_LOOP_BREAK(tm_BLACK);
       }
     }
     tm_node_LOOP_END(tm_BLACK);
@@ -1476,6 +1497,11 @@ void tm_gc_full_inner_type(tm_type *type)
   tm_sweep_is_error = 0;
 
   while ( try ++ < 2) {
+    /* Unmark all marked nodes. */
+    _tm_phase_init(tm_ALLOC);
+    _tm_node_unmark_all();
+    tm_assert_test(tm.n[tm_BLACK] == 0);
+
     /* Scan all roots, mark pointers. */
     _tm_phase_init(tm_ROOT);
     _tm_root_scan_all();
@@ -1490,11 +1516,6 @@ void tm_gc_full_inner_type(tm_type *type)
     _tm_node_sweep_all();
     tm_assert_test(tm.n[tm_ECRU] == 0);
     
-    /* Unmark the marked nodes. */
-    _tm_phase_init(tm_UNMARK);
-    _tm_node_unmark_all();
-    tm_assert_test(tm.n[tm_BLACK] == 0);
-
     /* Sweep some blocks? */
     while ( _tm_block_sweep_some() ) {
     }
@@ -1523,7 +1544,7 @@ void *_tm_type_alloc_node_from_free_list(tm_type *t)
 {
   tm_node *n;
 
-  if ( (n = tm_list_first(&t->l[tm_WHITE])) ) {
+  if ( (n = tm_list_first(&t->color_list[tm_WHITE])) ) {
     char *ptr;
 
     /* Assert its coming from a valid block. */
@@ -1603,11 +1624,8 @@ void *tm_alloc_type_inner(tm_type *t)
 
   switch ( tm.phase ) {
   case tm_ALLOC:
-    /* Unmark some. */
+    /* Unmark some nodes. */
     if ( tm.n[tm_BLACK] ) {
-      /* Set up for scanning. */
-      tm_node_LOOP_INIT(tm_BLACK);
-
       if ( ! _tm_node_unmark_some(tm_node_unmark_some_size) ) {
 	tm.next_phase = tm_ROOT;
       }
@@ -1642,11 +1660,10 @@ void *tm_alloc_type_inner(tm_type *t)
   case tm_SCAN:
     /* Unmark some. */
     if ( tm.n[tm_GREY] ) {
-      /* Set up for scanning. */
-      tm_node_LOOP_INIT(tm_GREY);
-
       /* Scan a little bit. */
       if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
+	/* Scanning is complete. */
+
 	/* 
 	** If the roots were mutated during mark,
 	** remark all roots.
@@ -1669,7 +1686,7 @@ void *tm_alloc_type_inner(tm_type *t)
 	** begin sweeping.
 	*/
 	if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
-	  /* Force SWEEP here so new node gets allocated as GREY. */
+	  /* Force SWEEP phase here so new node gets allocated as GREY. */
 	  _tm_phase_init(tm_SWEEP);
 	  tm.next_phase = -1;
 	}
@@ -1691,14 +1708,13 @@ void *tm_alloc_type_inner(tm_type *t)
     if ( tm.n[tm_ECRU] ) {
       /* If scan any marked nodes now. */
       if ( tm.n[tm_GREY] ) {
-	/* Set up for scanning. */
-	tm_node_LOOP_INIT(tm_GREY);
 	_tm_node_scan_some(tm_node_scan_some_size * 2);
+	if ( ! tm.n[tm_GREY] ) {
+	  /* For some reason we need to restart the sweep list. */
+	  tm_node_LOOP_INIT(tm_ECRU);
+	}
       }
       if ( ! tm.n[tm_GREY] ) {
-	/* Set up for scanning. */
-	tm_node_LOOP_INIT(tm_ECRU);
-
 	/* Try to immediately sweep nodes for the type we want first. */
 	/* There are no nodes left to sweep. */
 	if ( ! 
@@ -1708,35 +1724,13 @@ void *tm_alloc_type_inner(tm_type *t)
 	      ) 
 	     ) {
 	  /* Start unmarking used nodes. */
-	  tm.next_phase = tm_UNMARK;
+	  tm.next_phase = tm_ALLOC;
 	}
       }
     } else {
       /* There are no nodes left to sweep. */
       /* Start unmarking used nodes. */
-      tm.next_phase = tm_UNMARK;
-    }
-    break;
-
-  case tm_UNMARK:
-    if ( tm.n[tm_BLACK] ) {
-      /* Set up for unmarking. */
-      tm_node_LOOP_INIT(tm_BLACK);
-      _tm_node_unmark_some(tm_node_unmark_some_size);
-    
-      if ( ! tm.n[tm_BLACK] ) {
-	tm.next_phase = tm_ALLOC;
-
-	/* Attempt to sweep some blocks. */
-	if ( _tm_block_sweep_some() ) {
-	  /*
-	  ** If a block was swept, 
-	  ** make sure the free list for t is filled.
-	  */
-	  tm_msg("b swept block allocated for type %p\n", t);
-	  _tm_node_alloc_some(t, 1);
-	}
-      }
+      tm.next_phase = tm_ALLOC;
     }
     break;
 
@@ -1787,6 +1781,7 @@ void *tm_alloc_type_inner(tm_type *t)
     tm_node *n = (void*) (p - tm_node_HDR_SIZE);
     tm_assert_test(tm_ptr_to_node(p) == n);
     tm_assert_test(tm_ptr_to_node(p + t->size / 2) == n);
+    /* Only if tm_ptr_AT_NODE_END_VALID */
     tm_assert_test(tm_ptr_to_node(p + t->size) == n);
   }
 #endif

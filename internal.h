@@ -1,7 +1,7 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.13 2008-01-14 16:09:58 stephens Exp $ */
+/* $Id: internal.h,v 1.14 2008-01-15 01:41:00 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -68,7 +68,7 @@ typedef enum tm_color {
 
 typedef struct tm_node {
   /* The current list for the node. */
-  tm_list list;         /* tm_type.l[tm_node_color(this)] list */
+  tm_list list; /* tm_type.color_list[tm_node_color(this)] list */
 } tm_node;
 
 #define tm_node_color(n) ((tm_color) tm_list_color(n))
@@ -151,8 +151,8 @@ typedef struct tm_type {
   struct tm_type *hash_next;  /* Hash table next ptr. */
   size_t size;                /* Size of each node. */
   tm_list blocks;             /* List of blocks allocated for this type. */
-  size_t n[tm__LAST2];        /* Total elements. */
-  tm_list l[tm_TOTAL];        /* Lists of node by color. */
+  size_t n[tm__LAST2];        /* Totals by color. */
+  tm_list color_list[tm_TOTAL];  /* Lists of node by color. */
   tm_block *alloc_from_block; /* The current block we are allocating from. */
   tm_adesc *desc;             /* User-specified descriptor handle. */
 } tm_type;
@@ -182,11 +182,10 @@ enum tm_config {
 /* Phases. */
 
 enum tm_phase {
-  tm_ALLOC = 0, /* Alloc from free.                       (WHITE->ECRU) */
+  tm_ALLOC = 0, /* Alloc from free, unmark black (WHITE->ECRU, BLACK->ECRU) */
   tm_ROOT,      /* Begin mark roots, alloc os.            (ECRU->GREY)  */
   tm_SCAN,      /* Scan marked nodes, alloc os.           (GREY->BLACK) */
   tm_SWEEP,     /* Sweepng unmarked nodes, alloc free/os. (ECRU->WHITE) */
-  tm_UNMARK,    /* Ummarking marked roots, alloc free/os. (BLACK->ECRU) */
   tm_phase_END
 };
 
@@ -229,11 +228,13 @@ struct tm_data {
 
   int inited, initing;
 
+  /* Possible actions. */
   int marking;
   int scanning;
   int sweeping;
+  int unmarking;
 
-  /* The current process. */
+  /* The current processing phase. */
   enum tm_phase phase, next_phase;
 
   /* Number of cumulative allocations during each phase. */
@@ -283,8 +284,8 @@ struct tm_data {
   size_t n[tm__LAST3];
 
   /* Type color list iterators. */
-  tm_type *tp[tm_TOTAL];
-  tm_node *np[tm_TOTAL];
+  tm_type *type_loop_ptr[tm_TOTAL];
+  tm_node *node_loop_ptr[tm_TOTAL];
 
   /* Current tm_alloc() list change stats. */
   size_t alloc_n[tm__LAST3];
@@ -293,14 +294,13 @@ struct tm_data {
   tm_time_stat /* time spent: */
     ts_os_alloc,            /* in tm_alloc_os(). */
     ts_os_free,             /* in tm_free_os().  */
-    ts_alloc,               /* in tm_alloc().    */
+    ts_alloc,               /* in tm_malloc().    */
     ts_free,                /* in tm_free().     */
     ts_gc,                  /* in tm_gc_full().  */
-    ts_barrier,             /* in tm_barrier.    */
-    ts_barrier_black,       /* in tm_barrier for black node  */
+    ts_barrier,             /* in tm_write_barrier*().    */
+    ts_barrier_black,       /* in tm_write_barrier*() recoloring black nodes. */
     ts_phase[tm_phase_END]; /* in each phase.    */
     
-
   /* Roots */
   tm_root roots[8];
   tm_root aroots[8]; /* anti-root */
@@ -351,27 +351,41 @@ extern struct tm_data tm;
 /**************************************************************************/
 /* Global color list iterators. */
 
-#define tm_node_LOOP_INIT(C) \
-  tm.tp[C] = tm_list_next(&tm.types); \
-  tm.np[C] = tm_list_next(&tm.tp[C]->l[C]);
+#define tm_node_LOOP_INIT(C) do	{		\
+  tm.type_loop_ptr[C] = (void *) &tm.types;	\
+  tm.node_loop_ptr[C] = 0;			\
+} while (0)
 
-#define tm_node_LOOP(C) do { \
-  while ( (void*) tm.tp[C] != (void*) &tm.types ) { \
-    tm_type *t = tm.tp[C], *tp = tm_list_next(t); \
-    while ( (void*) tm.np[C] != (void*) &t->l[C] ) { \
-      tm_node *n = tm.np[C], *np = tm_list_next(n); \
-      tm.np[C] = np;
+#define tm_node_LOOP(C) while ( tm.n[C] ) {				\
+    tm_node *n, *node_next;						\
+    tm_type *t = tm.type_loop_ptr[C];					\
+    /* At end of type loop? */						\
+    if ( (void*) t == (void*) &tm.types ) {				\
+      /* Advance to next type. */					\
+      t = tm.type_loop_ptr[C] = (void*) tm_list_next(t);		\
+      tm.node_loop_ptr[C] = tm_list_next(&t->color_list[C]);		\
+    }									\
+    /* At end of node list? */						\
+    if ( (void*) tm.node_loop_ptr[C] == (void*) &t->color_list[C] ) {	\
+      /* Advance to next type. */					\
+      t = tm.type_loop_ptr[C] = (void*) tm_list_next(t);		\
+      tm.node_loop_ptr[C] = tm_list_next(&t->color_list[C]);		\
+    } else {								\
+      n = tm.node_loop_ptr[C]; node_next = tm_list_next(n);		\
+      {
 
-#define tm_node_LOOP_BREAK() goto tm_node_STOP
+#define tm_node_LOOP_BREAK(C)			\
+  /* Advance to next node. */			\
+  tm.node_loop_ptr[C] = node_next;		\
+  break
 
-#define tm_node_LOOP_END(C) \
-    } ; \
-    tm.tp[C] = tp; \
-    tm.np[C] = tm_list_next(&tp->l[C]); \
-  } \
-  tm_node_LOOP_INIT(C); \
-  tm_node_STOP: (void)0; \
-} while ( 0 )
+#define tm_node_LOOP_END(C)			\
+      }						\
+    /* Advance to next node. */			\
+    tm.node_loop_ptr[C] = node_next;		\
+    }						\
+}
+
 
 /****************************************************************************/
 /* Internal procs. */

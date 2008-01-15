@@ -118,7 +118,10 @@ void _tm_range_scan(const void *b, const void *e)
   for ( p = b; 
 	((char*) p + sizeof(void*)) <= (char*) e; 
 	p += tm_PTR_ALIGN ) {
-    tm_node *n = _tm_mark_possible_ptr(* (void**) p);
+#if 0
+    tm_node *n = 
+#endif
+      _tm_mark_possible_ptr(* (void**) p);
 
 #if 0
     if ( n ) {
@@ -162,13 +165,15 @@ size_t _tm_node_scan_some(long left)
   if ( tm.n[tm_GREY] ) {
     tm_node_LOOP(tm_GREY);
     {
+      tm_assert_test(tm_node_color(n) == tm_GREY);
+
       _tm_node_mark_and_scan_interior(n, tm_node_to_block(n));
 
       ++ count;
       bytes += t->size;
 
       if ( (left -= t->size) <= 0 ) {
-	tm_node_LOOP_BREAK();
+	tm_node_LOOP_BREAK(tm_GREY);
       }
     }
     tm_node_LOOP_END(tm_GREY);
