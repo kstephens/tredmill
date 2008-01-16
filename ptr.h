@@ -21,14 +21,13 @@ tm_type *tm_block_to_type(tm_block *b)
 static __inline 
 tm_block *tm_ptr_to_block(char *p)
 {
-  char *b;
-  size_t offset;
 
   /*
    * FIXME:
    * This code does not work for blocks bigger than tm_block_SIZE.
    */
 
+#if tm_ptr_AT_END_IS_VALID
   /*
   ** A pointer directly at the end of block should be considered
   ** a pointer into the block before it.
@@ -45,6 +44,9 @@ tm_block *tm_ptr_to_block(char *p)
     p -= 10; // p goes back, p is gone!
   */
 
+  char *b;
+  size_t offset;
+
   offset = (((unsigned long) p) % tm_block_SIZE);
   b = p - offset;
   if ( offset == 0 ) {
@@ -54,6 +56,9 @@ tm_block *tm_ptr_to_block(char *p)
   }
 
   return (void*) b;
+#else
+  return (void*) ((unsigned long) p & tm_block_SIZE_MASK);
+#endif /* tm_ptr_AT_END_IS_VALID */
 }
 
 

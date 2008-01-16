@@ -1,5 +1,6 @@
 #include "internal.h"
 
+
 /***************************************************************************/
 /* root scan */
 
@@ -94,8 +95,8 @@ int _tm_root_scan_some()
     _tm_mark_possible_ptr(* (void**) tm.rp);
 
     tm.rp += tm_PTR_ALIGN;
-
     left -= tm_PTR_ALIGN;
+
   } while ( left > 0 );
 
  done:
@@ -132,23 +133,12 @@ void _tm_range_scan(const void *b, const void *e)
 }
 
 
+#if 0
 static __inline
 void _tm_node_mark_and_scan_interior(tm_node *n, tm_block *b)
 {
   tm_assert_test(tm_node_to_block(n) == b);
   tm_assert_test(tm_node_color(n) == tm_GREY);
-
-  /* Move to marked (BLACK) list. */
-  /*
-   * Do this first, before marking roots.
-   *
-   * This will insure that
-   * this node is mutated during
-   * interior pointer scanning,
-   * the node will be put back on
-   * the GREY list by the write barrier.
-   */
-  tm_node_set_color(n, b, tm_BLACK);
 
   /* Mark all possible pointers. */
   {
@@ -156,44 +146,93 @@ void _tm_node_mark_and_scan_interior(tm_node *n, tm_block *b)
     _tm_range_scan(ptr, ptr + b->type->size);
   }
 }
+#endif
 
 
-size_t _tm_node_scan_some(long left)
+/* Scans node interiors for amount pointers. */
+size_t _tm_node_scan_some(size_t amount)
 {
   size_t count = 0, bytes = 0;
+#define gi (&tm.node_color_iter[tm_GREY])
 
-  if ( tm.n[tm_GREY] ) {
-    tm_node_LOOP(tm_GREY);
-    {
+  do {
+    tm_node *n;
+
+    /* Only scan in BLACK nodes. */
+    if ( gi->node && ! tm_node_color(gi->node) == tm_BLACK ) {
+      gi->ptr = 0;
+    }
+
+    /* Check node color here because write barrier might
+     * have move the current scan node to GREY
+     */
+    if ( gi->ptr ) {
+      while ( gi->ptr + sizeof(void*) < gi->end ) {
+	/* Attempt to mark node at possible pointer. */
+	_tm_mark_possible_ptr(* (void **) gi->ptr);
+      
+	gi->ptr += tm_PTR_ALIGN;
+
+	++ count;
+	bytes += tm_PTR_ALIGN;
+
+	/* Scanned enough? */
+	if ( -- amount <= 0 ) {
+	  goto done;
+	}
+      }
+
+      /* Done scanning node. */
+      /* Reset scan pointer because all scanning maybe complete. */
+      gi->node = 0;
+      gi->ptr = 0;
+      gi->end = 0;
+      gi->size = 0;
+    }
+    /* Done scanning gi->node. */
+
+    /* Get next GREY node. */
+    if ( (n = tm_node_iterator_next(gi)) ) {
       tm_assert_test(tm_node_color(n) == tm_GREY);
 
-      _tm_node_mark_and_scan_interior(n, tm_node_to_block(n));
+      /* Move to marked (BLACK) list. */
 
-      ++ count;
-      bytes += t->size;
+      /*
+       * Do this first, before scanning for interior pointers.
+       *
+       * This will insure that if
+       * this node is mutated during
+       * interior pointer scanning,
+       * the node will be put back on
+       * the GREY list by the write barrier.
+       */
+      tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
 
-      if ( (left -= t->size) <= 0 ) {
-	tm_node_LOOP_BREAK(tm_GREY);
-      }
+      /* Schedule this node for interior pointer scanning. */
+      gi->ptr  = tm_node_ptr(n);
+      gi->size = gi->type->size;
+      gi->end  = gi->ptr + gi->size;
+    } else {
+      goto done;
     }
-    tm_node_LOOP_END(tm_GREY);
-  }
+  } while ( amount > 0 );
 
+ done:
 #if 0
   if ( count )
     tm_msg("M c%lu b%lu l%lu\n", count, bytes, tm.n[tm_GREY]);
 #endif
 
-  return tm.n[tm_GREY];
+  return tm.n[tm_GREY] || gi->size;
 }
 
 
 void _tm_node_scan_all()
 {
-  while ( tm.n[tm_GREY] ) {
-    tm_node_LOOP_INIT(tm_GREY);
-    _tm_node_scan_some(tm.n[tm_TOTAL]);
+  tm_node_LOOP_INIT(tm_GREY);
+  while ( _tm_node_scan_some(~ 0UL) ) {
   }
 }
 
+#undef gi
 

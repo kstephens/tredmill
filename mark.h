@@ -63,7 +63,7 @@ int _tm_root_scan_some();
 
 void _tm_range_scan(const void *b, const void *e);
 
-size_t _tm_node_scan_some(long left);
+size_t _tm_node_scan_some(size_t amount);
 void _tm_node_scan_all();
 
 #endif

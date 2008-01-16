@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.18 2008-01-15 05:21:03 stephens Exp $ */
+/* $Id: tm.c,v 1.19 2008-01-16 04:14:07 stephens Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -6,15 +6,17 @@
 /****************************************************************************/
 /* User control vars. */
 
-long tm_node_alloc_some_size = 8;
-long tm_node_scan_some_size = 8;
-long tm_node_sweep_some_size = 8;
-long tm_node_unmark_some_size = 8;
+long tm_node_alloc_some_size = 8;  /* Nodes to alloc from block. */
+long tm_node_scan_some_size = 96;  /* Words to scan per alloc. */
+long tm_node_sweep_some_size = 8;  /* Nodes to sweep per alloc. */
+long tm_node_unmark_some_size = 8; /* Nodes to unmark per alloc. */
 
 long tm_block_sweep_some_size = 2;
 
 size_t tm_os_alloc_max = 64 * 1024 * 1024;
-int  tm_root_scan_full = 1;
+
+/* If true all root are scanned atomically. */
+int    tm_root_scan_full = 1;
 
 
 /****************************************************************************/
@@ -195,6 +197,10 @@ void _tm_block_sweep_init()
 
 /****************************************************************************/
 /* Init. */
+
+static __inline
+void tm_type_init(tm_type *t, size_t size);
+
 
 void tm_init(int *argcp, char ***argvp, char ***envpp)
 {
@@ -386,14 +392,20 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   _tm_root_loop_init();
 
   /* Global lists. */
-  tm_list_init(&tm.types);
+  tm_type_init(&tm.types, 0);
   tm_list_set_color(&tm.types, tm_LIVE_TYPE);
 
-  /* Color iterators. */
-  tm_node_LOOP_INIT(tm_WHITE);
-  tm_node_LOOP_INIT(tm_ECRU);
-  tm_node_LOOP_INIT(tm_GREY);
-  tm_node_LOOP_INIT(tm_BLACK);
+  /* Node color iterators. */
+#define X(C) \
+  tm.node_color_iter[C].color = C; \
+  tm_node_LOOP_INIT(C)
+  
+  X(tm_WHITE);
+  X(tm_ECRU);
+  X(tm_GREY);
+  X(tm_BLACK);
+
+#undef X
 
   /* Page managment. */
   memset(tm.page_in_use, 0, sizeof(tm.page_in_use));
@@ -1010,22 +1022,9 @@ int _tm_node_alloc_some(tm_type *t, long left)
 /************************************************************************/
 /* Type creation. */
 
-static __inline 
-tm_type *tm_type_new(size_t size)
+static __inline
+void tm_type_init(tm_type *t, size_t size)
 {
-  tm_type *t;
-
-  /* Allocate new type desc. */
-
-  /* Take from free list. */
-  if ( tm.type_free ) {
-    t = tm.type_free;
-    tm.type_free = t->hash_next;
-    t->hash_next = 0;
-  } else {
-    t = 0;
-  }
-
   /* Assign a type id. */
   t->id = ++ tm.type_id;
 
@@ -1056,6 +1055,27 @@ tm_type *tm_type_new(size_t size)
   t->alloc_from_block = 0;
 
   t->desc = 0;
+}
+
+
+static __inline 
+tm_type *tm_type_new(size_t size)
+{
+  tm_type *t;
+
+  /* Allocate new type desc. */
+
+  /* Take from free list. */
+  if ( tm.type_free ) {
+    t = tm.type_free;
+    tm.type_free = t->hash_next;
+    t->hash_next = 0;
+  } else {
+    t = 0;
+  }
+
+  /* Initialize type. */
+  tm_type_init(t, size);
 
   /* Add to global types list. */
   tm_list_insert(&tm.types, t);
@@ -1231,11 +1251,11 @@ static
 size_t _tm_node_sweep_some(int left)
 {
   size_t count = 0, bytes = 0;
-
+ 
   if ( tm.n[tm_ECRU] ) {
     if ( _tm_check_sweep_error() )
       return 0;
-  
+
     tm_node_LOOP(tm_ECRU);
     {
       tm_assert_test(tm_node_color(n) == tm_ECRU);
@@ -1270,24 +1290,17 @@ size_t _tm_node_sweep_some_for_type(tm_type *t, int left)
   size_t count = 0, bytes = 0;
   tm_node *n;
 
-  if ( t->n[tm_ECRU] ) {
-    while ( t->n[tm_ECRU] ) {
-      n = tm_list_first(&t->color_list[tm_ECRU]);
-      _tm_node_sweep(n, tm_node_to_block(n));
-
-      bytes += t->size;
-      ++ count;
-
-      if ( -- left <= 0 ) {
-	break;
-      }
+  while ( t->n[tm_ECRU] ) {
+    n = tm_list_first(&t->color_list[tm_ECRU]);
+    _tm_node_sweep(n, tm_node_to_block(n));
+    
+    bytes += t->size;
+    ++ count;
+    
+    if ( -- left <= 0 ) {
+      break;
     }
   }
-
-#if 0
-  /* Move the global sweep pointer away from t. */
-  tm_node_LOOP_INIT(tm_ECRU);
-#endif
 
   /* Update allocation stats. */
   tm.n[tm_b] -= bytes;
@@ -1354,22 +1367,20 @@ size_t _tm_node_unmark_some(long left)
 {
   size_t count = 0, bytes = 0;
 
-  if ( tm.n[tm_BLACK] ) {
-    tm_node_LOOP(tm_BLACK);
-    {
-      tm_assert_test(tm_node_color(n) == tm_BLACK);
-
-      tm_node_set_color(n, tm_node_to_block(n), tm_ECRU);
-
-      bytes += t->size;
-      ++ count;
-
-      if ( -- left <= 0 ) {
-	tm_node_LOOP_BREAK(tm_BLACK);
-      }
+  tm_node_LOOP(tm_BLACK);
+  {
+    tm_assert_test(tm_node_color(n) == tm_BLACK);
+    
+    tm_node_set_color(n, tm_node_to_block(n), tm_ECRU);
+    
+    bytes += t->size;
+    ++ count;
+    
+    if ( -- left <= 0 ) {
+      tm_node_LOOP_BREAK(tm_BLACK);
     }
-    tm_node_LOOP_END(tm_BLACK);
   }
+  tm_node_LOOP_END(tm_BLACK);
 
 #if 0
   if ( count ) 
@@ -1583,38 +1594,35 @@ void *_tm_alloc_type_inner(tm_type *t)
     break;
     
   case tm_SCAN:
-    /* Unmark some. */
-    if ( tm.n[tm_GREY] ) {
-      /* Scan a little bit. */
+    /* Scan a little bit. */
+    if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
+      /* Scanning is complete. */
+      
+      /* 
+      ** If the roots were mutated during mark,
+      ** remark all roots.
+      ** Rationale: A reference to a new node may have been
+      ** copied from the unmarked stack to a global root.
+      */
+      if ( tm_root_scan_full || 
+	   tm.data_mutations || 
+	   tm.stack_mutations ) {
+	/* Mark all roots. */
+	_tm_root_scan_all();
+      } else {
+	/* Mark the stack. */
+	_tm_stack_scan();
+      }
+      
+      /* 
+      ** If after marking the register and stack,
+      ** no additional nodes were marked,
+      ** begin sweeping.
+      */
       if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
-	/* Scanning is complete. */
-
-	/* 
-	** If the roots were mutated during mark,
-	** remark all roots.
-	** Rationale: A reference to a new node may have been
-	** copied from the unmarked stack to a global root.
-	*/
-	if ( tm_root_scan_full || 
-	     tm.data_mutations || 
-	     tm.stack_mutations ) {
-	  /* Mark all roots. */
-	  _tm_root_scan_all();
-	} else {
-	  /* Mark the stack. */
-	  _tm_stack_scan();
-	}
-	
-	/* 
-	** If after marking the register and stack,
-	** no additional nodes were marked,
-	** begin sweeping.
-	*/
-	if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
-	  /* Force SWEEP phase here so new node gets allocated as GREY. */
-	  _tm_phase_init(tm_SWEEP);
-	  tm.next_phase = -1;
-	}
+	/* Force SWEEP phase here so new node gets allocated as GREY. */
+	_tm_phase_init(tm_SWEEP);
+	tm.next_phase = -1;
       }
     }
     break;

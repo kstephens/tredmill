@@ -1,7 +1,7 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
-/* $Id: list.h,v 1.7 2002-05-11 02:33:27 stephens Exp $ */
+/* $Id: list.h,v 1.8 2008-01-16 04:14:07 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -118,7 +118,7 @@ static __inline void * tm_list_take_first(void *_l)
 }
 
 
-#define tm_list_LOOP(l, x) do { tm_list *__l = (tm_list*) (l), *__x = tm_list_next(__l); while ( __x != l ) { x = (void*) __x; __x = tm_list_next(__x); {
+#define tm_list_LOOP(l, x) do { tm_list *__l = (tm_list*) (l), *__x = tm_list_next(__l); while ( (void *) __x != (void *) (l) ) { x = (void*) __x; __x = tm_list_next(__x); {
 #define tm_list_LOOP_END }}} while(0)
 
 

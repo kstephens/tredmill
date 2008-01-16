@@ -1,22 +1,25 @@
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
-/* $Id: internal.h,v 1.15 2008-01-15 05:21:03 stephens Exp $ */
+/* $Id: internal.h,v 1.16 2008-01-16 04:14:07 stephens Exp $ */
 
 /****************************************************************************/
 
 #include "tm.h"
+#include <limits.h> /* PAGESIZE */
 #include <sys/time.h> /* struct timeval */
 #include <setjmp.h>
 #include "list.h"
 
 #include "tredmill/debug.h"
+#include "tredmill/stats.h"
 #include "tredmill/barrier.h"
 
 #include "util/bitset.h" /* bitset_t */
 
+/****************************************************************************/
+/* Configuration */
 
-#include <limits.h>
 #ifndef PAGESIZE
 #define PAGESIZE (1 << 13) /* 8192 */
 #endif
@@ -25,13 +28,21 @@
 #define tm_PAGESIZE PAGESIZE
 #endif
 
-/****************************************************************************/
-/* Color */
-
-
 #ifndef tm_TIME_STAT
 #define tm_TIME_STAT 1 /* Enable timing stats. */
 #endif
+
+#ifndef tm_name_GUARD
+#define tm_name_GUARD 0
+#endif
+
+#ifndef tm_block_GUARD
+#define tm_block_GUARD 0
+#endif
+
+/****************************************************************************/
+/* Color */
+
 
 typedef enum tm_color {
   /* Node colors */
@@ -66,8 +77,10 @@ typedef enum tm_color {
 
 } tm_color;
 
+
 /****************************************************************************/
 /* Node */
+
 
 typedef struct tm_node {
   /* The current list for the node. */
@@ -75,21 +88,13 @@ typedef struct tm_node {
 } tm_node;
 
 #define tm_node_color(n) ((tm_color) tm_list_color(n))
+#define tm_node_ptr(n) ((void*)(((tm_node*) n) + 1))
 
 
 /****************************************************************************/
 /*
 ** A tm_block is always aligned to tm_block_SIZE.
 */
-
-#ifndef tm_name_GUARD
-#define tm_name_GUARD 0
-#endif
-
-#ifndef tm_block_GUARD
-#define tm_block_GUARD 0
-#endif
-
 typedef struct tm_block {
   tm_list list;         /* tm_type.block list */
 
@@ -135,10 +140,11 @@ typedef struct tm_block {
 #define _tm_block_validate(b)
 #endif
 
+
 /****************************************************************************/
 /*
 ** A tm_type represents information about all types of a specific size.
-** Keeps track of:
+**
 ** 1. How many tm_nodes of a given color exists.
 ** 2. Lists of tm_nodes by color.
 ** 3. Lists of tm_blocks used.
@@ -160,8 +166,6 @@ typedef struct tm_type {
   tm_adesc *desc;             /* User-specified descriptor handle. */
 } tm_type;
 
-/****************************************************************************/
-/* Configuration. */
 
 enum tm_config {
   tm_ALLOC_ALIGN = 8, /* Nothing smaller than this is actually allocated. */
@@ -181,6 +185,23 @@ enum tm_config {
 };
 
 
+#define tm_block_SIZE_MASK ~(((unsigned long) tm_block_SIZE) - 1)
+#define tm_page_SIZE_MASK ~(((unsigned long) tm_page_SIZE) - 1)
+
+/****************************************************************************/
+/* Node Iterator. */
+
+typedef struct tm_node_iterator {
+  int color;
+  tm_node *node_next;
+  tm_type *type;
+  tm_node *node;
+  void *ptr;    /* Used for scanning node interiors. */
+  void *end;    /* End of scannable region. */
+  size_t size;  /* Size of scannable region. */
+} tm_node_iterator;
+
+
 /****************************************************************************/
 /* Phases. */
 
@@ -192,60 +213,65 @@ enum tm_phase {
   tm_phase_END
 };
 
+
 /****************************************************************************/
 /* Root sets. */
+
 
 typedef struct tm_root {
   const char *name;
   const void *l, *h;
 } tm_root;
 
-/****************************************************************************/
-/* Stats. */
-
-typedef struct tm_time_stat {
-  const char *name;
-  double 
-    td, /* Last time. */
-    ts, /* Total time. */
-    tw, /* Worst time. */
-    ta, /* Avg time. */
-    t0, t1, 
-    t01, t11;
-  short tw_changed;
-  unsigned int count;
-} tm_time_stat;
-
-void tm_time_stat_begin(tm_time_stat *ts);
-void tm_time_stat_end(tm_time_stat *ts);
 
 /****************************************************************************/
+
+
 /* Internal data. */
-
 struct tm_data {
-  /* Valid pointer range. */
-  void *ptr_range[2];
-
-  /****************************************************************************/
   /* Current status. */
-
   int inited, initing;
 
-  /* Possible actions. */
+  /* The current processing phase. */
+  enum tm_phase phase, next_phase;
+
+  /* Possible actions during current phase. */
   int marking;
   int scanning;
   int sweeping;
   int unmarking;
 
-  /* The current processing phase. */
-  enum tm_phase phase, next_phase;
+  /* Global node counts. */
+  size_t n[tm__LAST3];
 
   /* Number of cumulative allocations during each phase. */
   size_t alloc_by_phase[tm_phase_END];
 
+  /* Current tm_alloc() list change stats. */
+  size_t alloc_n[tm__LAST3];
+  
+  /* Types. */
+  tm_type types; /* List of all types. */
+  int type_id;
+
+  /* Type hash table. */
+  tm_type type_reserve[50], *type_free;
+#ifndef tm_type_hash_LEN
+#define tm_type_hash_LEN 101
+#endif
+  tm_type *type_hash[tm_type_hash_LEN];
+
   /* Block. */
   tm_block *block_first; /* The first block allocated. */
   tm_block *block_last;  /* The last block allocated. */
+
+  /* A list of free tm_blocks not returned to os. */
+  tm_list free_blocks;
+  int free_blocks_n;
+
+  /* Block sweeping iterators. */
+  tm_type *bt;
+  tm_block *bb;
 
   /* OS-level allocation */
   void * os_alloc_last;   /* The last alloc from the os. */
@@ -253,6 +279,9 @@ struct tm_data {
   void * os_alloc_expected; /* The next ptr expected from _tm_os_alloc_(). */
 
 #define tm_BITMAP_SIZE (tm_address_range_k / (tm_page_SIZE / 1024) / bitset_ELEM_BSIZE)
+
+  /* Valid pointer range. */
+  void *ptr_range[2];
 
   /* A bit map of pages with nodes in use. */
   /* Addressable by tm_page_SIZE. */
@@ -264,49 +293,17 @@ struct tm_data {
   /* A bit map of large blocks. */
   bitset_t block_large[tm_BITMAP_SIZE];
 
-  /* A list of free tm_blocks not returned to os. */
-  tm_list free_blocks;
-  int free_blocks_n;
-
-  /* Block sweeping iterators. */
-  tm_type *bt;
-  tm_block *bb;
-
-  /* Types. */
-  tm_list types;
-  int type_id;
-
-  /* Type hash table. */
-  tm_type type_reserve[50], *type_free;
-#ifndef tm_type_hash_LEN
-#define tm_type_hash_LEN 101
-#endif
-  tm_type *type_hash[tm_type_hash_LEN];
-
-  /* Global node counts. */
-  size_t n[tm__LAST3];
-
   /* Type color list iterators. */
-  tm_type *type_loop_ptr[tm_TOTAL];
-  tm_node *node_loop_ptr[tm_TOTAL];
+  tm_node_iterator node_color_iter[tm_TOTAL];
 
-  /* Current tm_alloc() list change stats. */
-  size_t alloc_n[tm__LAST3];
-  
-  /* Stats */
-  tm_time_stat /* time spent: */
-    ts_os_alloc,            /* in tm_alloc_os(). */
-    ts_os_free,             /* in tm_free_os().  */
-    ts_alloc,               /* in tm_malloc().    */
-    ts_free,                /* in tm_free().     */
-    ts_gc,                  /* in tm_gc_full().  */
-    ts_barrier,             /* in tm_write_barrier*().    */
-    ts_barrier_black,       /* in tm_write_barrier*() recoloring black nodes. */
-    ts_phase[tm_phase_END]; /* in each phase.    */
-    
+  /* Partial scan buffer. */
+  tm_node *scan_node;
+  void *scan_ptr;
+  size_t *scan_size;
+
   /* Roots */
-  tm_root roots[8];
-  tm_root aroots[8]; /* anti-root */
+  tm_root roots[16];
+  tm_root aroots[16]; /* anti-root */
   short nroots;
   short naroots;
   short root_datai, root_newi;
@@ -321,6 +318,17 @@ struct tm_data {
   unsigned long data_mutations;
   unsigned long stack_mutations;
 
+  /* Stats */
+  tm_time_stat /* time spent: */
+    ts_os_alloc,            /* in tm_alloc_os(). */
+    ts_os_free,             /* in tm_free_os().  */
+    ts_alloc,               /* in tm_malloc().    */
+    ts_free,                /* in tm_free().     */
+    ts_gc,                  /* in tm_gc_full().  */
+    ts_barrier,             /* in tm_write_barrier*().    */
+    ts_barrier_black,       /* in tm_write_barrier*() recoloring black nodes. */
+    ts_phase[tm_phase_END]; /* in each phase.    */
+    
   /* Stats/debugging support. */
   size_t alloc_id;
   size_t alloc_pass;
@@ -352,41 +360,86 @@ extern struct tm_data tm;
 
 
 /**************************************************************************/
-/* Global color list iterators. */
+/* Global node color list iterators. */
 
-#define tm_node_LOOP_INIT(C) do	{		\
-  tm.type_loop_ptr[C] = (void *) &tm.types;	\
-  tm.node_loop_ptr[C] = 0;			\
-} while (0)
 
-#define tm_node_LOOP(C) while ( tm.n[C] ) {				\
-    tm_node *n, *node_next;						\
-    tm_type *t = tm.type_loop_ptr[C];					\
-    /* At end of type loop? */						\
-    if ( (void*) t == (void*) &tm.types ) {				\
-      /* Advance to next type. */					\
-      t = tm.type_loop_ptr[C] = (void*) tm_list_next(t);		\
-      tm.node_loop_ptr[C] = tm_list_next(&t->color_list[C]);		\
-    }									\
-    /* At end of node list? */						\
-    if ( (void*) tm.node_loop_ptr[C] == (void*) &t->color_list[C] ) {	\
-      /* Advance to next type. */					\
-      t = tm.type_loop_ptr[C] = (void*) tm_list_next(t);		\
-      tm.node_loop_ptr[C] = tm_list_next(&t->color_list[C]);		\
-    } else {								\
-      n = tm.node_loop_ptr[C]; node_next = tm_list_next(n);		\
-      {
+static __inline
+void tm_node_iterator_init(tm_node_iterator *ni)
+{
+  ni->type = (void *) &tm.types;
+  ni->node_next = (void *) &ni->type->color_list[ni->color];
+  ni->node = 0;
+  ni->ptr = 0;
+  ni->end = 0;
+  ni->size = 0;
+}
 
-#define tm_node_LOOP_BREAK(C)			\
-  /* Advance to next node. */			\
-  tm.node_loop_ptr[C] = node_next;		\
-  break
+static __inline
+tm_node * tm_node_iterator_next(tm_node_iterator *ni)
+{
+  size_t i = 0;
+
+  while ( i ++ < tm.n[ni->color] ) {
+    // fprintf(stderr, "  t%p n%p i%ul\n", ni->type, ni->node_next, i);
+  
+    /* Wrap around on types? */
+    if ( (void *) ni->type == (void *) &tm.types ) {
+      ni->type = (void*) tm_list_next(ni->type);
+
+      /* This should never happen */
+      if ( (void *) ni->type == (void *) &tm.types ) {
+	tm_abort();
+	return 0;
+      }
+      
+    next_type:
+      /* Start on type node list. */
+      ni->node_next = (void *) &ni->type->color_list[ni->color];
+      
+      /* Move iterator to next node. */
+      ni->node_next = (void *) tm_list_next(ni->node_next);
+    }
+
+    /* At end of type color list? */
+    if ( (void *) ni->node_next == (void *) &ni->type->color_list[ni->color] ) {
+      ni->type = (void*) tm_list_next(ni->type);
+      goto next_type;
+    }
+
+    if ( tm_node_color(ni->node_next) != ni->color ) {
+      fprintf(stderr, "  node_color_iter[%d] derailed\n", ni->color);
+      ni->type = (void*) tm_list_next(ni->type);
+      goto next_type;
+    }
+    else {
+      /* Return current node. */
+      ni->node = ni->node_next;
+      
+      /* Move iterator to next node. */
+      ni->node_next = (void*) tm_list_next(ni->node_next);
+      
+      return ni->node;
+    }
+  }
+
+  return 0;
+}
+
+#define tm_node_LOOP_INIT(C) \
+  tm_node_iterator_init(&tm.node_color_iter[C])
+
+#define tm_node_LOOP(C) {						\
+  tm_node *n;								\
+  tm_type *t = 0;							\
+  while ( (n = tm_node_iterator_next(&tm.node_color_iter[C])) ) {	\
+    t = tm.node_color_iter[C].type;					\
+    {
+
+#define tm_node_LOOP_BREAK(C) break
 
 #define tm_node_LOOP_END(C)			\
-      }						\
-    /* Advance to next node. */			\
-    tm.node_loop_ptr[C] = node_next;		\
     }						\
+  }						\
 }
 
 

@@ -1,8 +1,9 @@
-# $Id: Makefile,v 1.9 2008-01-14 02:40:42 stephens Exp $
+# $Id: Makefile,v 1.10 2008-01-16 04:14:07 stephens Exp $
 
 MAKS=../maks
 
 OPTIMIZE=YES
+#OPTIMIZE=NO
 
 INCLS += ..
 
