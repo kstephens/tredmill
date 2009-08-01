@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.10 2008-01-16 04:14:07 stephens Exp $
+# $Id: Makefile,v 1.11 2009-08-01 10:47:31 stephens Exp $
 
 MAKS=../maks
 
@@ -58,4 +58,13 @@ include $(MAKS)/basic.mak
 #################################################################
 
 $(O_FILES) : $(H_FILES)
+
+#################################################################
+
+# Make this part of maks.
+doc/html : doc/html/index.html
+doc/html/index.html : $(C_FILES) $(H_FILES) doc/doxygen.conf
+	doxygen doc/doxygen.conf
+
+GARBAGE_DIRS += doc/latex
 

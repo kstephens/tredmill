@@ -32,7 +32,7 @@ const char *tm_struct_name[] = {
 };
 
 const char *tm_phase_name[] = {
-  "ALLOC",  /* tm_ALLOC */
+  "UNMARK",  /* tm_UNMARK */
   "ROOTS",  /* tm_ROOT */
   "SCAN",   /* tm_SCAN */
   "SWEEP",  /* tm_SWEEP */
@@ -335,7 +335,7 @@ int _tm_check_sweep_error()
   }
   tm_list_LOOP_END;
   
-  _tm_phase_init(tm_ALLOC);
+  _tm_phase_init(tm_UNMARK);
   tm_assert_test(tm.n[tm_ECRU] == 0);
   
   tm_stop();

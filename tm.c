@@ -1,4 +1,4 @@
-/* $Id: tm.c,v 1.19 2008-01-16 04:14:07 stephens Exp $ */
+/* $Id: tm.c,v 1.20 2009-08-01 10:47:31 stephens Exp $ */
 
 #include "tm.h"
 #include "internal.h"
@@ -57,7 +57,7 @@ should be during the current allocation phase.
 #endif
 
 static const tm_color tm_phase_alloc[] = {
-  tm_DEFAULT_ALLOC_COLOR,  /* tm_ALLOC */
+  tm_DEFAULT_ALLOC_COLOR,  /* tm_UNMARK */
   tm_DEFAULT_ALLOC_COLOR,  /* tm_ROOT */
   tm_DEFAULT_ALLOC_COLOR,  /* tm_SCAN */
   tm_SWEEP_ALLOC_COLOR,    /* tm_SWEEP */
@@ -97,7 +97,7 @@ void _tm_phase_init(int p)
 #endif
 
   switch ( (tm.phase = p) ) {
-  case tm_ALLOC:
+  case tm_UNMARK:
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 0;
@@ -432,8 +432,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   /* Block sweep iterator. */
   _tm_block_sweep_init();
 
-  /* Start by allocating. */
-  _tm_phase_init(tm_ALLOC);
+  /* Start by unmarking. */
+  _tm_phase_init(tm_UNMARK);
 
   /* Finally... initialized. */
   -- tm.initing;
@@ -1429,7 +1429,7 @@ void _tm_gc_full_type_inner(tm_type *type)
 
   while ( try ++ < 2) {
     /* Unmark all marked nodes. */
-    _tm_phase_init(tm_ALLOC);
+    _tm_phase_init(tm_UNMARK);
     _tm_node_unmark_all();
     tm_assert_test(tm.n[tm_BLACK] == 0);
 
@@ -1448,7 +1448,7 @@ void _tm_gc_full_type_inner(tm_type *type)
     tm_assert_test(tm.n[tm_ECRU] == 0);
     
     /* Unmark all marked nodes. */
-    _tm_phase_init(tm_ALLOC);
+    _tm_phase_init(tm_UNMARK);
     _tm_node_unmark_all();
     tm_assert_test(tm.n[tm_BLACK] == 0);
 
@@ -1456,7 +1456,7 @@ void _tm_gc_full_type_inner(tm_type *type)
     while ( _tm_block_sweep_some() ) {
     }
 
-    _tm_phase_init(tm_ALLOC);
+    _tm_phase_init(tm_UNMARK);
   }
 
   _tm_gc_clear_stats();
@@ -1559,7 +1559,7 @@ void *_tm_alloc_type_inner(tm_type *t)
 #endif
 
   switch ( tm.phase ) {
-  case tm_ALLOC:
+  case tm_UNMARK:
     /* Unmark some nodes. */
     if ( tm.n[tm_BLACK] ) {
       if ( ! _tm_node_unmark_some(tm_node_unmark_some_size) ) {
@@ -1657,13 +1657,13 @@ void *_tm_alloc_type_inner(tm_type *t)
 	      ) 
 	     ) {
 	  /* Start unmarking used nodes. */
-	  tm.next_phase = tm_ALLOC;
+	  tm.next_phase = tm_UNMARK;
 	}
       }
     } else {
       /* There are no nodes left to sweep. */
       /* Start unmarking used nodes. */
-      tm.next_phase = tm_ALLOC;
+      tm.next_phase = tm_UNMARK;
     }
     break;
 

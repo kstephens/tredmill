@@ -35,7 +35,7 @@ void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size
   /* Compute total number of nodes in use. */
   if ( nn > tm_NU ) {
     switch ( tm.phase ) {
-    case tm_ALLOC:
+    case tm_UNMARK:
     case tm_ROOT:
     case tm_SCAN:
       n[tm_NU] = n[tm_ECRU] + n[tm_GREY] + n[tm_BLACK];
