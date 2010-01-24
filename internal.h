@@ -125,11 +125,18 @@ typedef enum tm_color {
 
 
 /**
- * An allocation node.
+ * An allocation node representing the data ptr returned from tm_alloc().
+ *
+ * The data ptr return by tm_alloc() from a tm_node is immediately after its tm_list header.
  *
  * tm_nodes are parceled from tm_blocks.
  * Each tm_node has a color, which places it on
- * a colored list for the tm_node's type.
+ * a colored list for the tm_node's tm_type.
+ *
+ * A tm_node's tm_block is determined by the tm_node's address.
+ *
+ * A tm_node's tm_type is determined by the tm_block it resides in.
+ *
  */
 typedef struct tm_node {
   /*! The current type list for the node. */
@@ -151,10 +158,14 @@ typedef struct tm_node {
 
 /**
  * A block allocated from the operating system.
- * tm_blocks are parceled into tm_nodes of uniform size
- * based on the tm_type.
  *
- * A tm_block is always aligned to tm_block_SIZE.
+ * tm_blocks are parceled into tm_nodes of uniform size
+ * based on the size of the tm_block's tm_type.
+ *
+ * All tm_nodes parceled from a tm_block have the same
+ * tm_type.
+ *
+ * A tm_block's address is always aligned to tm_block_SIZE.
  */
 typedef struct tm_block {
   /*! tm_type.block list */
@@ -171,7 +182,7 @@ typedef struct tm_block {
   const char *name;
 #endif
 
-  /*! Block's actual size (including this hdr), multiple of tm_block_SIZE. */
+  /*! Block's actual size (including this header), multiple of tm_block_SIZE. */
   size_t size;         
   /*! The type the block is assigned to.
    *  All tm_nodes parceled from this block will be of type->size.
@@ -181,9 +192,9 @@ typedef struct tm_block {
   char *begin;
   /*! The end of allocation space.  When alloc reaches end, the block is fully parceled. */
   char *end;
-  /*! The allocation pointer for new tm_nodes. */
+  /*! The allocation pointer for new tm_nodes.  Starts at begin.  Nodes as parceled by incrementing this attribute. */
   char *alloc;
-  /*! Total nodes for this block. */
+  /*! Number of nodes for this block, indexed by tm_color: includes tm_TOTAL. */
   size_t n[tm__LAST];
 
 #if tm_block_GUARD
@@ -197,27 +208,36 @@ typedef struct tm_block {
 
 /*! True if the tm_block has no used nodes; i.e. it can be returned to the OS. */
 #define tm_block_unused(b) ((b)->n[tm_WHITE] == b->n[tm_TOTAL])
+
 /*! The begining address of any tm_nodes parcelled from a tm_block. */
 #define tm_block_node_begin(b) ((void*) (b)->begin)
+
 /*! The end address of any tm_nodes parcelled from a tm_block. */
 #define tm_block_node_end(b) ((void*) (b)->end)
+
 /*! The allocation address of the next tm_node to be parcelled from a tm_block. */
 #define tm_block_node_alloc(b) ((void*) (b)->alloc)
+
 /*! The total size of a tm_node with a useable size based on the tm_block's tm_type size. */
 #define tm_block_node_size(b) ((b)->type->size + tm_node_HDR_SIZE)
-/*! The next adddress of a tm_node parcelled from tm_block. */
+
+/*! The adddress of the next tm_node after n, parcelled from tm_block. */
 #define tm_block_node_next(b, n) ((void*) (((char*) (n)) + tm_block_node_size(b)))
 
 #if tm_block_GUARD
-/*! Validates a tm_block guards for data corruption. */
+/*! Validates tm_block for data corruption. */
 #define _tm_block_validate(b) do { \
    tm_assert_test(b); \
+   tm_assert_test((b)->size); \
    tm_assert_test(! ((void*) &tm <= (void*) (b) && (void*) (b) < (void*) (&tm + 1))); \
    tm_assert_test((b)->guard1 == tm_block_hash(b)); \
    tm_assert_test((b)->guard2 == tm_block_hash(b)); \
+   tm_assert_test((b)->begin < (b)->end); \
+   tm_assert_test((b)->begin <= (b)->alloc && (b)->alloc <= (b)->end); \
+   tm_assert_test((b)->n[tm_WHITE] + (b)->n[tm_ECRU] + (b)->n[tm_GREY] + (b)->n[tm_BLACK] == (b)->n[tm_TOTAL]); \
 } while(0)
 #else
-#define _tm_block_validate(b)
+#define _tm_block_validate(b) ((void) 0)
 #endif
 
 
@@ -253,7 +273,7 @@ typedef struct tm_type {
   size_t size;
   /*! List of blocks allocated for this type. */                
   tm_list blocks;     
-  /*! Totals by color. */        
+  /*! Number of nodes, indexed by tm_color: includes tm_TOTAL, tm_B, tm_NU, tm_b, tm_b_NU stats. */        
   size_t n[tm__LAST2];
   /*! Lists of node by color; see tm_node.list. */
   tm_list color_list[tm_TOTAL];
@@ -302,7 +322,9 @@ enum tm_config {
 
 /****************************************************************************/
 
-/*! Colored Node Iterator. */
+/**
+ * Colored Node Iterator.
+ */
 typedef struct tm_node_iterator {
   /*! The color of nodes to iterate on. */
   int color;
@@ -313,13 +335,14 @@ typedef struct tm_node_iterator {
   /*! The current tm_node. */
   tm_node *node;
 
-  /*! Used for scanning node interiors. */
-  /*! The pointer to the tm_node_ptr() */
-  void *ptr;
-  /*! End of scanable region. */
-  void *end;
-  /*! Size of scanable region. */
-  size_t size;
+  /*! The node scheduled for interior scanning. */
+  void *scan_node;
+  /*! The current scanning position in the tm_node_ptr() data region. */
+  void *scan_ptr;
+  /*! End of scan region. */
+  void *scan_end;
+  /*! Size of scan region. */
+  size_t scan_size;
 } tm_node_iterator;
 
 
@@ -334,17 +357,17 @@ typedef struct tm_node_iterator {
  *
  * These are similar to the phases in 
  * typical in a stop-the-world collector,
- * except that work for these phases is
- * done during allocation by tm_alloc().
+ * except the work for these phases is
+ * done for short periods within tm_alloc().
  */
 enum tm_phase {
   /*! Unmark nodes.           (BLACK->ECRU) */
   tm_UNMARK = 0,
   /*! Begin mark roots.       (ECRU->GREY)  */ 
   tm_ROOT,
-  /*! Scan marked nodes.      (GREY->BLACK) */
+  /*! Scan marked nodes.      (ECRU->GREY, GREY->BLACK) */
   tm_SCAN,
-  /*! Sweepng unmarked nodes. (ECRU->WHITE) */
+  /*! Sweep unmarked nodes.   (ECRU->WHITE) */
   tm_SWEEP,
   /*! Placeholder for size of arrays indexed by tm_phase. */
   tm_phase_END
@@ -360,6 +383,8 @@ enum tm_phase {
 
 /**
  * A root set region to be scanned for possible pointers.
+ *
+ * Pointers p within l >= p and p < h are considered within this root set.
  */
 typedef struct tm_root {
   /*! The name of the root. */
@@ -584,9 +609,10 @@ void tm_node_iterator_init(tm_node_iterator *ni)
   ni->type = (void *) &tm.types;
   ni->node_next = (void *) &ni->type->color_list[ni->color];
   ni->node = 0;
-  ni->ptr = 0;
-  ni->end = 0;
-  ni->size = 0;
+  ni->scan_node = 0;
+  ni->scan_ptr = 0;
+  ni->scan_end = 0;
+  ni->scan_size = 0;
 }
 
 /*! Returns the next node from the iterator. */
