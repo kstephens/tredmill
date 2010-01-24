@@ -506,13 +506,15 @@ int main(int argc, char **argv, char **envp)
   run_test(test7);
   run_test(test8);
 
+
+  tm_msg_prefix = "FINISHED";
   tm_gc_full();
   tm_print_stats();
 
   tm_msg(_run_sep);
   tm_msg("* %s\n", "END");
 
-  fprintf(stderr, "%s: stopped\n", argv[0]);
+  fprintf(stderr, "%s: finished OK\n", argv[0]);
 
   return 0;
 }
