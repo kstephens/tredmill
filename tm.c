@@ -1,33 +1,202 @@
-/* $Id: tm.c,v 1.20 2009-08-01 10:47:31 stephens Exp $ */
+/** \file tm.c
+ * \brief Internals of TM.
+ *
+ * - $Id: tm.c,v 1.20 2009-08-01 10:47:31 stephens Exp $
+ */
+
+/** \mainpage TM: a real-time conservative allocator.
+\section Introduction
+
+TM is a real-time, non-relocating, conservative, allocator using type- and color-segregated lists, 
+inspired by Henry Baker’s "Treadmill" paper. 
+
+The source code for TM is located at http://kurtstephens.com/pub/tredmill.
+
+TM interleaves marking, scanning and sweeping during each call to tm_malloc().
+
+TM attempts to limit the amount of scanning, marking and collecting
+during each call to tm_alloc() to avoid stopping the world for long
+periods of time.
+
+TM supports type segregation to increase locality of objects of the same type and
+reduce internal fragmentation.
+
+The space overhead of each object requires two address pointers.
+ 
+\section more_info More Information
+
+See:
+- http://kurtstephens.com/research/tredmill
+- The Treadmill: Real-Time Garbage Collection Without Motion Sickness, Henry G. Baker, http://home.pipeline.com/~hbaker1/NoMotionGC.html
+.
+
+\section to_do To Do
+
+- Support for 64-bit address spaces.
+- Implement allocations larger than tm_block_SIZE.
+- Implement aligned allocations using a page-indexed bit vector.
+  - Flag a bit for the beginning page of the aligned block.
+  - Use a hash table to map the address of the aligned block to a tm_block containing its own tm_type.
+  .
+.
+
+\section implementation Implementation
+
+\subsection data_structures Data Structures
+
+An allocation unit is a tm_node. 
+Each tm_node is allocated from a block of system memory (tm_block) sized and aligned to a multiple of the operating system’s page size.
+Each tm_block is dedicated to a particular type (tm_type). 
+Each tm_type represents a tm_node allocation size, thus each tm_block is uniformly parceled into tm_nodes of the same size.
+In general, each power-of-two size has a tm_type.
+However, tm_types can be explicitly created for any size.
+
+\subsection node_coloring Node Coloring
+
+Each tm_node has a “color” tag describing its current allocation state:
+
+-# tm_WHITE: free, unused.
+-# tm_ECRU: allocated, potentially unused.
+-# tm_GREY: allocated, marked used, not scanned for pointers.
+-# tm_BLACK: allocated, marked used, scanned for pointers.
+
+Each tm_type has it's own tm_WHITE, tm_ECRU, tm_GREY, and tm_BLACK doubly-linked lists.
+Each tm_node is a member of one, and only one, of its type’s color lists. 
+To keep the tm_node header small, the node's color is encoded in the lower two bits of the tm_node._prev pointer.
+
+When a tm_node's color changes, it is moved to a different colored list in its tm_type for processing in a different allocation phase.
+
+Node types can be explicitly created for common sizes that are not a power of two, to reduce internal memory fragmentation.
+
+\subsection allocation_phases Allocation Phases
+
+The allocator interleaves the following phases with allocation:
+
+-# tm_UNMARK: Unmarking scanned blocks for subsequent rooting. (tm_BLACK -> tm_ECRU)
+-# tm_ROOT: Root scanning and marking nodes for scanning. (tm_ECRU -> tm_GREY)
+-# tm_SCAN: Scanning marked nodes for interior pointers. (tm_GREY -> tm_BLACK)
+-# tm_SWEEP: Freeing unmarked nodes. (tm_ECRU -> tm_WHITE)
+
+During each call to tm_alloc(), each phase will do some collection work before returning a newly allocated tm_node:
+
+-# tm_UNMARK: Allocate tm_nodes from the tm_type’s tm_WHITE list until it is empty. A fixed number of tm_BLACK nodes are returned to the tm_ECRU list. Memory pressure may cause switching to the tm_ROOT phase.
+-# tm_ROOT: A fixed number of roots are scanned for pointers into allocated space. tm_ECRU nodes with valid references are moved to tm_GREY. After all roots are scanned, the next phase is tm_SCAN.
+-# tm_SCAN: A fixed number of node bytes of tm_GREY nodes are scanned for interior pointers and moved to tm_BLACK list. Once all tm_GREY nodes are scanned, the next phase is tm_SWEEP.
+-# tm_SWEEP: If there are no more nodes to be scanned, sweep a fixed number of tm_ECRU nodes to the tm_WHITE list. Once all tm_ECRU nodes are sweeped, the collector returns to the tm_UNMARK phase.
+
+As nodes are allocated, marked, scanned, sweeped and unmarked they are moved between the colored lists as follows:
+
+\image html tredmil_states.png "TM Node States"
+\image latex tredmil_states.png "TM Node States" width=10cm
+
+\subsection node_states Node States
+
+In general, newly allocated tm_nodes are taken from the tm_type’s tm_WHITE list and placed on its tm_ECRU list.
+If the type’s tm_WHITE list is empty, an allocation tm_block is requested from the operating system and is scheduled for parceling new tm_WHITE nodes for the type. 
+If the allocation tm_block becomes empty, the process is repeated: another allocation block is requested and parceled.
+
+A limited number of new free nodes are parceled from the type’s current allocation block as needed and are initialized as new tm_WHITE nodes.
+
+New tm_blocks may be requested from the operating system during all phases, if the type’s tm_WHITE list or allocation block is empty.
+The reasoning is the operating system should be able to allocate a new allocation block faster than a collection that would need to completely “stop the world”.
+
+All phases, except the tm_SWEEP phase, allocate nodes by moving them from the tm_WHITE list to the tm_ECRU list.
+The tm_SWEEP phase allocated nodes from tm_WHITE to tm_GREY, because tm_ECRU nodes are considered to be unmarked garbage during the tm_SWEEP phase and tm_BLACK nodes are considered “in-use’ but are not scanned for interior pointers during the tm_SWEEP phase.
+Using tm_GREY during tm_SWEEP is also related to tm_BLACK node mutation, which gives rise to requiring a write barrier on tm_BLACK nodes.
+
+The tm_SWEEP phase will always attempt to scan any tm_GREY nodes before continuing to sweep any tm_ECRU nodes.
+
+The tm_BLACK color might seem a better choice for tm_SWEEP allocations, but this would force young nodes, which are more likely to be garbage, to be kept until the next tm_SWEEP phase. Coloring tm_SWEEP allocations tm_BLACK would also prevent any new interior pointers stored in nodes that may reference tm_ECRU nodes from being scanned before tm_SWEEP is complete.
+
+To prevent thrashing the operating system with tm_block allocation and free requests, a limited number of unused blocks are kept on a global free list.
+
+\subsection aligned_blocks Aligned Blocks
+
+Aligned blocks allow determining if generic word is a pointer to a heap-allocated tm_node to be computed with simple pointer arithmetic and a bit vector check.
+
+To determine a pointer’s allocation:
+
+-# Checking a bit vector indexed by the pointer’s page number. The bit is set when tm_nodes are parceled and cleared when the entire tm_block is unused and returned to the free block list or operating system.
+-# Mask off the insignificant page bits to construct an aligned tm_block address.
+-# Determine the size of tm_nodes in the tm_block from the block’s tm_type.
+-# Determine if the pointer resides in the data portion of the tm_node by considering the tm_node and tm_block linked-list headers to be “holes” in the address space.
+
+\subsection type_segregation Type Segregation
+
+Nodes are segregated by type. Each type has a size. By default, type sizes are rounded up to the next power of two. A specific allocation type can be requested with tm_adesc_for_size(). The allocation descriptor can then be used by tm_alloc_desc(). The opaque element can be used to store additional mutator data.
+
+Each node type has its own colored lists, allocated block lists and accounting. Segregating node types allows allocation requests to be done without scanning tm_WHITE nodes for best fit. However, since types and the blocks are segregated, and nodes of a larger size are not scavenged for smaller sise, this could least to poor actual memory utilization in mutators with small numbers of allocations for many sizes, since a single node allocation for a given size will cause at least one block to requested from the operating system.
+
+The color lists are logically combined from all type for iteration using nested type and node iterators.
+
+\subsection write_barriers Write Barriers
+
+During the tm_SCAN and tm_SWEEP phase, any tm_BLACK node that is mutated must be rescanned due to the possible introduction of new references from the tm_BLACK node to tm_ECRU nodes. This is achieved by calling tm_write_barrier(&R) in the mutator after modifying R’s contents.
+
+There are two versions of the write barrier:
+
+-# tm_write_barrier(R)
+-# tm_write_barrier_pure(R)
+
+tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc(). tm_write_barrier_pure(R) cannot be used if R might be an interior pointer or a pointer to a stack or root-allocated object. tm_write_barrier(R) should be used if the address of R is not known to be a pointer to the heap, the stack or global roots.
+If R is a pointing into global roots, tm_write_barrier(R) will cause global root rescanning, if the collector is in the tm_SCAN phase.
+
+Stack writes are not barriered, because stack scanning occurs atomically at the end of tm_ROOT.
+
+\subsection unfriendly_mutators Unfriendly Mutators
+
+When entering code where the write barrier protocol is not followed, tm_disable_write_barrier() can be called to put the collector into a “stop-world” collection mode until tm_enable_write_barrier() is called.
+
+A virtual memory write-barrier based on mprotect() might be easier to manage than requiring the mutator to call the write barrier. Recoloring and marking root set pages can be done in hardware assuming the overhead of mprotect() and the SIGSEGV signal handler is low when changing phases and colors.
+
+\subsection issues Issues
+
+- TM is not currently thread-safe.
+- TM does not currently support allocations larger than a tm_block. This will be fixed by using another page-indexed bit vector. A “block-header-in-page” bit vector marks the page of each tm_block header. This bit vector will be scanned backwards to locate the first page that contains the allocation’s block header.
+- TM does not currently support requests for page-aligned allocations. This could be achieved by using a hash table to map page-aligned allocations to its tm_block.
+
+\subsection references References
+
+-# The Treadmill: Real-Time Garbage Collection Without Motion Sickness, Henry G. Baker, http://home.pipeline.com/~hbaker1/NoMotionGC.html
+
+ 
+ */
 
 #include "tm.h"
 #include "internal.h"
 
 /****************************************************************************/
-/* User control vars. */
+/*! \defgroup control Control */
+/*@{*/
 
-long tm_node_alloc_some_size = 8;  /* Nodes to alloc from block. */
-long tm_node_scan_some_size = 96;  /* Words to scan per alloc. */
-long tm_node_sweep_some_size = 8;  /* Nodes to sweep per alloc. */
-long tm_node_unmark_some_size = 8; /* Nodes to unmark per alloc. */
+long tm_node_alloc_some_size = 8;  /*! Nodes to alloc from block. */
+long tm_node_scan_some_size = 96;  /*! Words to scan per alloc. */
+long tm_node_sweep_some_size = 8;  /*! Nodes to sweep per alloc. */
+long tm_node_unmark_some_size = 8; /*! Nodes to unmark per alloc. */
 
-long tm_block_sweep_some_size = 2;
+long tm_block_sweep_some_size = 2; /*! Number of blocks to sweep after sweep phase. */
 
-size_t tm_os_alloc_max = 64 * 1024 * 1024;
+int tm_block_min_free = 4;         /*! minimum number of tm_blocks to retain. */
 
-/* If true all root are scanned atomically. */
-int    tm_root_scan_full = 1;
+size_t tm_os_alloc_max = 64 * 1024 * 1024; /* 64MiB */
+
+int    tm_root_scan_full = 1;      /*! If true, all root are scanned atomically. */
+
+/*@}*/
 
 
 /****************************************************************************/
-/* Safety */
+/*! \defgroup validation Validation */
+/*@{*/
 
 void tm_validate_lists();
 
 
-/**************************************************************************/
-/* Allocation colors. */
+/*@}*/
 
+/**************************************************************************/
+/*! \defgroup color Color */
+/*@{*/
 
 /*
 This table defines what color a newly allocated node
@@ -35,22 +204,27 @@ should be during the current allocation phase.
 */
 
 #if 1
- /*
- ** Default allocated nodes to "not marked".
- ** Rational: some are allocated but thrown away early.
+/**
+ * Default allocated nodes to "not marked".
+ * Rational: some are allocated but thrown away early.
  */
 #define tm_DEFAULT_ALLOC_COLOR tm_ECRU
 #else
- /*
- ** Default allocated nodes to "scheduled, not marked".
- ** Rational: they are allocated because they are to be used (referred to).
- ** This seems to cause it to keep allocating new pages before sweeping.
+/**
+ * Default allocated nodes to "scheduled, not marked".
+ * Rational: they are allocated because they are to be used (referred to).
+ * This seems to cause it to keep allocating new pages before sweeping.
  */
 #define tm_DEFAULT_ALLOC_COLOR tm_GREY
 #endif
 
 
 #if 1
+/**
+ * Default allocated node color during sweep.
+ * Rational: Assume that nodes are in-use and may contain pointers 
+ * to prevent accidental sweeping.
+ */
 #define tm_SWEEP_ALLOC_COLOR tm_GREY
 #else
 #define tm_SWEEP_ALLOC_COLOR tm_BLACK
@@ -66,90 +240,107 @@ static const tm_color tm_phase_alloc[] = {
 
 #undef tm_DEFAULT_ALLOC_COLOR
 
-/**************************************************************************/
-/* Global allocator data */
 
+/*@}*/
+
+/**************************************************************************/
+/*! \defgroup internal_data Internal: Data */
+/*@{*/
+
+/**
+ * Global allocator data.
+ */
 struct tm_data tm;
 
+
+/*@}*/
+
 /****************************************************************************/
-/* Phase support. */
+/*! \defgroup phase Phase */
+/*@{*/
 
 
-static 
-int tm_stack_growth(char *ptr, int depth)
-{
-  char *top_of_stack = (char*) &top_of_stack;
-  if ( depth ) {
-    return tm_stack_growth(ptr, depth - 1);
-  }
-  return top_of_stack - ptr;
-}
-
-
+/**
+ * Initialize the collection/allocation phase.
+ */
 void _tm_phase_init(int p)
 {
   tm_msg("p %s\n", tm_phase_name[p]);
 
 #if 0
+  /* DEBUG: DELETE ME! */
   if ( tm.alloc_id == 1987 )
     tm_stop();
-
 #endif
 
   switch ( (tm.phase = p) ) {
   case tm_UNMARK:
+    /**
+     * - tm_UNMARK: begin unmarking tm_BLACK nodes as tm_ECRU:
+     */
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 0;
     tm.unmarking = 1;
 
-    /* Set up for unmarking. */
+    /*! Set up for unmarking. */
     // tm_node_LOOP_INIT(tm_BLACK);
 
-    /* Keep track of how many nodes are in use. */
+    /*! Keep track of how many tm_BLACK nodes are in use. */
     tm.n[tm_NU] = tm.n[tm_BLACK];
 
-    /* Write barrier. */
+    /*! Set up write barrier hooks. */
     _tm_write_root = __tm_write_root_ignore;
     _tm_write_barrier = __tm_write_barrier_ignore;
     _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   case tm_ROOT:
+    /**
+     * - tm_ROOT: begin scanning roots for potential pointers:
+     */
     tm.marking = 1;
     tm.scanning = 0;
     tm.sweeping = 0;
     tm.unmarking = 0;
 
+    /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
 
-    /* Initialize root mark loop. */
+    /*! Initialize root mark loop. */
     _tm_root_loop_init();
 
-    /* Write barrier. */
+    /*! Set up write barrier hooks. */
     _tm_write_root = __tm_write_root_root;
     _tm_write_barrier = __tm_write_barrier_root;
     _tm_write_barrier_pure = __tm_write_barrier_pure_root;
     break;
 
   case tm_SCAN:
+    /**
+     * - tm_SCAN: begin scanning tm_GREY nodes for internal pointers:
+     */
     tm.marking = 1;
     tm.scanning = 1;
     tm.sweeping = 0;
     tm.unmarking = 0;
 
+    /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
 
-    /* Set up for marking. */
+    /*! Set up for marking. */
     // tm_node_LOOP_INIT(tm_GREY);
 
-    /* Write barrier. */
+    /*! Set up write barrier hooks. */
     _tm_write_root = __tm_write_root_mark;
     _tm_write_barrier = __tm_write_barrier_mark;
     _tm_write_barrier_pure = __tm_write_barrier_pure_mark;
     break;
 
   case tm_SWEEP:
+    /**
+     * - tm_SWEEP: begin reclaiming any ECRU nodes as WHITE.
+     */
     tm.marking = 1;
     tm.scanning = 1;
     tm.sweeping = 1;
@@ -163,8 +354,8 @@ void _tm_phase_init(int p)
     /* Set up for sweeping. */
     // tm_node_LOOP_INIT(tm_ECRU);
 
-    /* Write barrier. */
-    /* Recolor mutated BLACK nodes to GREY for rescanning. */
+    /*! Set up write barrier hooks: */
+    /*! Recolor mutated BLACK nodes to GREY for rescanning. */
     _tm_write_root = __tm_write_root_sweep;
     _tm_write_barrier = __tm_write_barrier_sweep;
     _tm_write_barrier_pure = __tm_write_barrier_pure_sweep;
@@ -182,6 +373,14 @@ void _tm_phase_init(int p)
 }
 
 
+/*@}*/
+
+
+/**
+ * Begin sweeping of tm_blocks.
+ *
+ * UNIMPLEMENTED!
+ */
 static __inline
 void _tm_block_sweep_init()
 {
@@ -196,19 +395,47 @@ void _tm_block_sweep_init()
 
 
 /****************************************************************************/
-/* Init. */
+/* \defgroup initialization Initialization */
+/*@{*/
 
 static __inline
 void tm_type_init(tm_type *t, size_t size);
 
 
+/**
+ * Determine the direction of stack growth.
+ */
+static 
+int tm_stack_growth(char *ptr, int depth)
+{
+  char *top_of_stack = (char*) &top_of_stack;
+  if ( depth ) {
+    return tm_stack_growth(ptr, depth - 1);
+  }
+  return top_of_stack - ptr;
+}
+
+
+/**
+ * API: Initialize the tm allocator.
+ *
+ * This should be called from main():
+ *
+ * <pre>
+ * int main(int argc, char **argv, char **envp)
+ * {
+ *   tm_init(&argc, &argv, &envp);
+ *   ...
+ * }
+ * </pre>
+ */
 void tm_init(int *argcp, char ***argvp, char ***envpp)
 {
   int i;
 
   tm_assert(sizeof(unsigned long) == sizeof(void *));
 
-  /* Time stat names, */
+  /*! Initialize time stat names. */
   tm.ts_os_alloc.name = "tm_os_alloc";
   tm.ts_os_free.name = "tm_os_free";
   tm.ts_alloc.name = "tm_malloc";
@@ -221,7 +448,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
     tm.ts_phase[i].name = tm_phase_name[i];
   }
 
-  /* Msg ignore table. */
+  /*! Initialize tm_msg() ignore table. */
   if ( tm_msg_enable_all ) {
     tm_msg_enable("\1", 1);
   } else {
@@ -232,15 +459,18 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm_msg_enable("WF", 1);
   // tm_msg_enable("b", 1);
 
+  /*! Warn if already initalized. */
   if ( tm.inited ) {
     tm_msg("WARNING: tm_init() called more than once.\nf");
   }
   tm.initing ++;
 
+  /*! Error if argcp and argvp are not given. */
   if ( ! argcp || ! argvp ) {
     tm_msg("WARNING: tm_init() not called from main().\n");
   }
 
+  /*! Default envpp = &environ, if not given. */
   if ( ! envpp ) {
     extern char **environ;
     tm_msg("WARNING: tm_init(): not passed &envp.\n");
@@ -257,21 +487,21 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 #undef P
 #endif
 
-  /* Possible pointer range. */
+  /*! Initialize possible pointer range. */
   tm_ptr_l = (void*) ~0UL;
   tm_ptr_h = 0;
 
-  /* Roots. */
+  /*! Initialize root sets. */
   tm.nroots = 0;
   tm.data_mutations = tm.stack_mutations = 0;
 
   tm.root_datai = -1;
 
-  /* Roots: register set. */
+  /*! Initialize root set for the register set, using a jmpbuf struct. */
   /* A C jmpbuf struct contains the saved registers set, hopefully. */
   tm_root_add("register", &tm.jb, (&tm.jb) + 1);
 
-  /* Roots: stack */
+  /*! Initialize roots set for the stack. */
 
   {
     void *bottom_of_stack, *top_of_stack = (void*) &i;
@@ -328,10 +558,10 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   }
 
 
-  /* Anti-roots: do not scan tm's internal data structures. */
+  /*! Remove anti-roots: do not scan tm's internal data structures. */
   tm_root_remove("tm", &tm, &tm + 1);
 
-  /* Roots: initialized, and zeroed data segments. */
+  /*! Initialize root set for initialized and uninitialize (zeroed) data segments. */
 #ifdef __win32__
   {
     extern int _data_start__, _data_end__, _bss_start__, _bss_end__;
@@ -347,9 +577,17 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   {
     extern int __data_start, __bss_start, _end;
 
+#if 0
+    fprintf(stderr, "__data_start = %d\n", __data_start);
+    fprintf(stderr, "__bss_start = %d\n", __bss_start);
+    fprintf(stderr, "_end = %d\n", _end);
+#endif
+
+#if 1
     tm_assert(&__data_start < &__bss_start && &__bss_start < &_end);
     tm_root_add("initialized data", &__data_start, &__bss_start);
     tm_root_add("uninitialized data", &__bss_start, &_end);
+#endif
   }
 #define tm_roots_data_segs
 #endif
@@ -359,9 +597,9 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 #endif
 
 
-  /* IMPLEMENT: Support dynamically-loaded library data segments. */
+  /*! IMPLEMENT: Support dynamically-loaded library data segments. */
 
-  /* Dump the root sets. */
+  /*! Dump the tm_root sets. */
   tm_msg_enable("R", 1);
 
   tm_msg("R ROOTS {\n");
@@ -378,24 +616,24 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   tm_msg_enable("R", 0);
 
-  /* Validate root sets. */
+  /*! Validate tm_root sets. */
   {
     extern int _tm_user_bss[], _tm_user_data[];
 
-    tm_assert(tm_ptr_is_in_root_set(_tm_user_bss), ": _tm_user_bss = %p", _tm_user_bss);
+    tm_assert(tm_ptr_is_in_root_set(_tm_user_bss),  ": _tm_user_bss = %p", _tm_user_bss);
     tm_assert(tm_ptr_is_in_root_set(_tm_user_data), ": _tm_user_data = %p", _tm_user_data);
     _tm_set_stack_ptr(&i);
     tm_assert(tm_ptr_is_in_root_set(&i), ": &i = %p", &i);
   }
 
-  /* Root marking. */
+  /*! Initialize root marking loop. */
   _tm_root_loop_init();
 
-  /* Global lists. */
+  /*! Initialize global tm_type list. */
   tm_type_init(&tm.types, 0);
   tm_list_set_color(&tm.types, tm_LIVE_TYPE);
 
-  /* Node color iterators. */
+  /*! Initialize tm_node color iterators. */
 #define X(C) \
   tm.node_color_iter[C].color = C; \
   tm_node_LOOP_INIT(C)
@@ -407,45 +645,52 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
 #undef X
 
-  /* Page managment. */
+  /*! Initialize page managment. */
   memset(tm.page_in_use, 0, sizeof(tm.page_in_use));
 
-  /* Block Mgmt. */
+  /*! Initialize tm_block free list. */
   tm_list_init(&tm.free_blocks);
   tm_list_set_color(&tm.free_blocks, tm_FREE_BLOCK);
   tm.free_blocks_n = 0;
 
   /* Types. */
 
-  /* Type desc free list. */
+  /*! Initialize tm_type free list. */
   for ( i = 0; i < sizeof(tm.type_reserve)/sizeof(tm.type_reserve[0]); ++ i ) {
     tm_type *t = &tm.type_reserve[i];
     t->hash_next = (void*) tm.type_free;
     tm.type_free = t;
   }
   
-  /* Type desc hash table. */
+  /*! Initialize size to tm_type hash table. */
   for ( i = 0; i < tm_type_hash_LEN; i ++ ) {
     tm.type_hash[i] = 0;
   }
 
-  /* Block sweep iterator. */
+  /*! Initialize block sweep iterator. */
   _tm_block_sweep_init();
 
-  /* Start by unmarking. */
+  /*! Initialize phase: start by unmarking. */
   _tm_phase_init(tm_UNMARK);
 
-  /* Finally... initialized. */
+  /*! Mark system as initialized. */
   -- tm.initing;
   ++ tm.inited;
   tm_msg_enable("WF", 0);
 }
 
 
+/*@}*/
+
 /***************************************************************************/
-/* Node color mgmt. */
+/* \defgroup color Color */
+/*@{*/
 
 
+/**
+ * Sets the color of a tm_node.
+ *
+ */
 static __inline
 void _tm_node_set_color(tm_node *n, tm_block *b, tm_type *t, tm_color c)
 {
@@ -455,29 +700,38 @@ void _tm_node_set_color(tm_node *n, tm_block *b, tm_type *t, tm_color c)
   tm_assert_test(t);
   tm_assert_test(c <= tm_BLACK);
 
-  /* Cumulative global stats. */
+  /*! Increment cumulative global stats. */
   ++ tm.alloc_n[c];
   ++ tm.alloc_n[tm_TOTAL];
 
-  /* Global stats. */
+  /*! Adjust global stats. */
   ++ tm.n[c];
   tm_assert_test(tm.n[nc]);
   -- tm.n[nc];
 
-  /* Type stats. */
+  /*! Adjust type stats. */
   ++ t->n[c];
   tm_assert_test(t->n[nc]);
   -- t->n[nc];
 
-  /* Block stats. */
+  /*! Adjust block stats. */
   ++ b->n[c];
   tm_assert_test(b->n[nc]);
   -- b->n[nc];
 
+  /*! Set the tm_code color. */
   tm_list_set_color(n, c);
 }
 
 
+/**
+ * Set a tm_node color within a tm_block.
+ *
+ * The tm_node must reside in the tm_block.
+ *
+ * Removes the tm_node from its current tm_type color list
+ * and appends the tm_node to the new color_list.
+ */
 void tm_node_set_color(tm_node *n, tm_block *b, tm_color c)
 {
   tm_type *t;
@@ -495,27 +749,38 @@ void tm_node_set_color(tm_node *n, tm_block *b, tm_color c)
 }
 
 
+/*@}*/
+
 /**************************************************/
+/*! \defgroup block Block */
+/*@{*/
 
 
+/**
+ * Add a tm_block to a tm_type.
+ */
 static __inline
 void _tm_type_add_block(tm_type *t, tm_block *b)
 {
   tm_assert_test(t);
   tm_assert_test(b);
+  /*! Assert that tm_block is not already associated with a tm_type. */
   tm_assert_test(b->type == 0);
 
-  /* Add to type's block list. */
+  /*! Associate tm_block with the tm_type. */
   b->type = t;
 
-  /* Type block stats. */
+  /*! Increment type block stats. */
   ++ t->n[tm_B];
 
-  /* Add to type's block list. */
+  /*! Add to type's block list. */
   tm_list_insert(&t->blocks, b);
 }
 
 
+/**
+ * Remove a tm_block from its tm_type.
+ */
 static __inline
 void _tm_type_remove_block(tm_type *t, tm_block *b)
 {
@@ -523,49 +788,51 @@ void _tm_type_remove_block(tm_type *t, tm_block *b)
   tm_assert_test(b->type);
   tm_assert_test(b->type == t);
 
-  /* Type block stats. */
+  /*! Decrement type block stats. */
   tm_assert_test(t->n[tm_B]);
   -- t->n[tm_B];
 
-  /* Don't allocate nodes from it any more. */
+  /*! Do not allocate nodes from it any more. */
   if ( t->alloc_from_block == b ) {
     t->alloc_from_block = 0;
   }
 
-  /* Remove from type's block list. */
+  /*! Remove tm-block from tm_type.block list. */
   tm_list_remove(b);
 
-  /* Dissassociate with the type. */
+  /*! Dissassociate tm_block with the tm_type. */
   b->type = 0;
 }
 
 
+/**
+ * Initialize a new tm_block.
+ */
 static __inline
 void tm_block_init(tm_block *b)
 {
   tm_assert_test(b->size);
 
-  /* Initialize. */
+  /*! Initialize tm_block list pointers. */
   tm_list_init(&b->list);
+  /*! Mark tm_block as tm_LIVE_BLOCK. */
   tm_list_set_color(b, tm_LIVE_BLOCK);
 
 #if tm_name_GUARD
   b->name = "BLOCK";
 #endif
 
-  /* No type, yet. */
+  /*! Disassocate the tm_block with any tm_type. */
   b->type = 0;
 
-  /* Init bounds of the block's allocation space. */
+  /*! Initialize bounds of the tm_block's allocation space. */
   b->begin = (char*) b + tm_block_HDR_SIZE;
   b->end   = (char*) b + b->size;
   
-  /* Initialize block's allocation pointer
-   * to beginning of valid space.
-   */
+  /*! Initialize tm_block allocation pointer to beginning of valid useable space. */
   b->alloc = b->begin;
 
-  /* Update valid node ptr range. */
+  /*! Update global valid node pointer range. */
   if ( tm_ptr_l > (void*) b->begin ) {
     tm_ptr_l = b->begin;
   }
@@ -577,13 +844,13 @@ void tm_block_init(tm_block *b)
   b->guard1 = b->guard2 = tm_block_hash(b);
 #endif
 
-  /* Clear block stats. */
+  /*! Clear tm_block stats. */
   memset(b->n, 0, sizeof(b->n));
 
-  /* Reset block sweep iterator. */
+  /*! Reset tm_block sweep iterator. */
   _tm_block_sweep_init();
 
-  /* Remember the first block and most recent blocks allocated. */
+  /*! Remember the first block and most recent blocks allocated. */
   tm.block_last = b;
   if ( ! tm.block_first ) {
     tm.block_first = b;
@@ -596,17 +863,20 @@ void tm_block_init(tm_block *b)
 }
 
 
+/**
+ * Allocate a tm_block of a given size.
+ */
 static
 tm_block *_tm_block_alloc(size_t size)
 {
   tm_block *b = 0;
   size_t offset;
 
-  /* Force allocation to a multiple of a block. */
+  /*! Force allocation to a multiple of tm_block_SIZE. */
   if ( (offset = (size % tm_block_SIZE)) )
     size += tm_block_SIZE - offset;
 
-  /* Scan block free list for a block of the right size. */
+  /*! Scan global tm_block free list for a block of the right size. */
   {
     tm_block *bi;
 
@@ -629,18 +899,17 @@ tm_block *_tm_block_alloc(size_t size)
     tm_list_LOOP_END;
   }
 
-  /*
-  ** If we didn't find one in the free list,
-  ** allocate one from the OS.
-  */
+  /** 
+   * Otherwise, allocate a new tm_block from the OS.
+   */
   if ( ! b ) {
-    /* Make sure it's aligned to tm_block_SIZE. */
+    /*! Make sure it's aligned to tm_block_SIZE. */
     b = _tm_os_alloc_aligned(size);
 
-    /* Initialize its size. */
+    /*! Initialize its size. */
     b->size = size;
     
-    /* Global OS block stats. */
+    /*! Increment OS block stats. */
     ++ tm.n[tm_B_OS];
     if ( tm.n[tm_B_OS_M] < tm.n[tm_B_OS] )
       tm.n[tm_B_OS_M] = tm.n[tm_B_OS];
@@ -652,9 +921,10 @@ tm_block *_tm_block_alloc(size_t size)
     tm_msg("b a os b%p\n", (void*) b);
   }
 
+  /*! Initialize the tm_block. */
   tm_block_init(b);
 
-  /* Update stats. */
+  /*! Increment global block stats. */
   ++ tm.n[tm_B];
   tm.blocks_allocated_since_gc += size / tm_block_SIZE;
 
@@ -662,10 +932,16 @@ tm_block *_tm_block_alloc(size_t size)
 
   // fprintf(stderr, "  _tm_block_alloc(%p)\n", b);
 
+  /*! Return the new or reused tm_block. */
   return b;
 }
 
 
+/**
+ * Scavenges all tm_types for an unused tm_block.
+ *
+ * NOT USED!
+ */
 static 
 tm_block *tm_block_scavenge(tm_type *t)
 {
@@ -698,6 +974,13 @@ tm_block *tm_block_scavenge(tm_type *t)
 static __inline
 void _tm_node_delete(tm_node *n, tm_block *b);
 
+/**
+ * Reclaims the tm_nodes in a tm_block.
+ *
+ * - Removes each tm_node allocated from the tm_block from
+ * its WHITE list.
+ * - All tm_nodes in the tm_block must be WHITE.
+ */
 static
 int _tm_block_reclaim_nodes(tm_block *b)
 {
@@ -706,37 +989,38 @@ int _tm_block_reclaim_nodes(tm_block *b)
   
   tm_assert_test(b->type);
 
-  /*
-  ** If all nodes in the block are free, 
-  ** remove all nodes in the block from any lists.
+  /**
+   * If all nodes in the block are free, 
+   * remove all nodes in the block from any lists.
   */
   tm_assert_test(tm_block_unused(b));
 
   {
     tm_node *n;
     
-    /* First block. */
+    /*! Start at first tm_node in tm_block. */
     n = tm_block_node_begin(b);
     while ( (void*) n < tm_block_node_alloc(b) ) {
-      /* Remove and advance. */
+      /*! Remove node from tm_WHITE list and advance. */
       ++ count;
       bytes += b->size;
 
+      tm_assert_test(tm_node_color(n) == tm_WHITE);
       _tm_node_delete(n, b);
 
       n = tm_block_node_next(b, n);
     }
   }
 
-  /* Update white list stats. */
+  /*! Decrement tm_WHITE and tm_TOTAL counts: */
 
-  /* Type node counts. */
+  /*! - Decrement type node counts. */
   tm_assert_test(t->n[tm_WHITE] >= count);
   t->n[tm_WHITE] -= count;
   tm_assert_test(t->n[tm_TOTAL] >= count);
   t->n[tm_TOTAL] -= count;
 
-  /* Block node counts. */
+  /*! - Decrement block node counts. */
   tm_assert_test(b->n[tm_WHITE] >= count);
   b->n[tm_WHITE] -= count;
   tm_assert_test(b->n[tm_WHITE] == 0);
@@ -745,7 +1029,7 @@ int _tm_block_reclaim_nodes(tm_block *b)
   b->n[tm_TOTAL] -= count;
   tm_assert_test(b->n[tm_TOTAL] == 0);
 
-  /* Global node counts. */
+  /*! - Decrement global node counts. */
   tm_assert_test(tm.n[tm_WHITE] >= count);
   tm.n[tm_WHITE] -= count;
   tm_assert_test(tm.n[tm_TOTAL] >= count);
@@ -755,23 +1039,26 @@ int _tm_block_reclaim_nodes(tm_block *b)
 }
 
 
+/**
+ * Reclaim a live tm_block.
+ */
 static __inline
 void _tm_block_reclaim(tm_block *b)
 {
   tm_assert_test(b);
   tm_assert_test(tm_list_color(b) == tm_LIVE_BLOCK);
 
-  /* Reclain any allocated nodes from type free lists. */
+  /*! Reclain any allocated nodes from type free lists. */
   _tm_block_reclaim_nodes(b);
 
-  /* Avoid pointers into block. */
+  /*! Avoid pointers into block. */
   b->alloc = b->begin;
 
-  /* Global block stats. */
+  /*! Decrement global block stats. */
   tm_assert_test(tm.n[tm_B]);
   -- tm.n[tm_B];
 
-  /* List cannot be last allocated. */
+  /*! Remove reference from tm.block_first and tm.block_last, if necessary. */
   if ( tm.block_last == b ) {
     tm.block_last = 0;
   }
@@ -779,14 +1066,21 @@ void _tm_block_reclaim(tm_block *b)
     tm.block_first = 0;
   }
 
-  /* Remove block from type. */
+  /*! Remove tm_block from tm_type. */
   _tm_type_remove_block(b->type, b);
 
-  /* Mark block's pages as unused. */
+  /*! Mark tm_block's pages as unused. */
   _tm_page_mark_unused_range(b, b->size);
 }
 
 
+/**
+ * Frees a block either returning the block to the OS or keeping it on a free list.
+ *
+ * - If using mmap(), the block is returned to the OS only if there are enough blocks on the free list (see: tm_block_min_free).
+ * - If using sbrk(), the block is returned to the OS only if it was the most recient block allocated by sbrk().
+ *
+ */
 static __inline
 void _tm_block_free(tm_block *b)
 {
@@ -794,12 +1088,12 @@ void _tm_block_free(tm_block *b)
 
   tm_assert(tm_block_unused(b));
 
-  /* Reclaim block from type list. */
+  /*! Reclaim tm_block from its tm_type.blocks list. */
   _tm_block_reclaim(b);
 
 #if tm_USE_MMAP
-  /* Reduce calls to _tm_os_free() by keeping a few free blocks. */
-  if ( tm.free_blocks_n >= 4 ) {
+  /*! If using mmap(), reduce calls to _tm_os_free() by keeping tm_block_min_free free blocks. */
+  if ( tm.free_blocks_n > tm_block_min_free ) {
     // fprintf(stderr, "  tm_block_free too many free blocks: %d\n", tm.free_blocks_n);
     os_free = 1;
   } else {
@@ -808,60 +1102,69 @@ void _tm_block_free(tm_block *b)
 #endif
 
 #if tm_USE_SBRK
-  /* If b was the last block allocated from the OS: */
+  /*! If using sbrk() and b was the last block allocated from the OS, */
   if ( sbrk(0) == (void*) b->end ) {
-    /* Reduce valid node ptr range. */
+    /*! Reduce valid node ptr range. */
     tm_assert(tm_ptr_h == b->end);
     tm_ptr_h = b;
 
+    /*! And plan to return block to OS. */
     os_free = 1;
   } else {
     os_free = 0;
   }
 #endif
 
+  /*! If block should return to OS, */
   if ( os_free ) {
-    /* Global OS block stats. */
+    /*! Decrement global OS block stats. */
     tm_assert_test(tm.n[tm_B_OS]);
     -- tm.n[tm_B_OS];
 
     tm_assert_test(tm.n[tm_b_OS] > b->size);
     tm.n[tm_b_OS] -= b->size;
 
-    /* Return it back to OS. */
+    /*! And return aligned block back to OS. */
     _tm_os_free_aligned(b, b->size);
 
     tm_msg("b f os b%p\n", (void*) b);
   } else {
-    /* Remove from t->blocks list and add to free block list. */
+    /*! Otherwise, remove from t->blocks list and add to global free block list. */
     tm_list_remove_and_append(&tm.free_blocks, b);
     ++ tm.free_blocks_n;
 
+    /*! Mark block as tm_FREE_BLOCK. */
     tm_list_set_color(b, tm_FREE_BLOCK);
 
     tm_msg("b f fl b%p %d\n", (void*) b, tm.free_blocks_n);
   }
 
-  /* Reset block sweep iterator. */
+  /*! Reset block sweep iterator. */
   _tm_block_sweep_init();
 
   // tm_validate_lists();
 
   // fprintf(stderr, "  _tm_block_free(%p)\n", b);
   // tm_msg("b f b%p\n", (void*) b);
+
+  /*! Return. */
 }
 
 
+/**
+ * Allocates a tm_block of tm_block_SIZE for a tm_type.
+ */
 static 
 tm_block * _tm_block_alloc_for_type(tm_type *t)
 {
   tm_block *b;
   
-  /* Allocate a new block */
+  /*! Allocate a new tm_block. */
   b = _tm_block_alloc(tm_block_SIZE);
 
   // fprintf(stderr, "  _tm_block_alloc(%d) => %p\n", tm_block_SIZE, b);
 
+  /*! Add it to the tm_type.blocks list */
   if ( b ) {
     _tm_type_add_block(t, b);
   }
@@ -872,10 +1175,15 @@ tm_block * _tm_block_alloc_for_type(tm_type *t)
 }
 
 
+/*@}*/
+
 /*********************************************************************/
-/* Node creation/destruction. */
+/*! \defgroup node Node */
+/*@{*/
 
-
+/**
+ * Initialize a tm_node from a tm_block.
+ */
 static __inline 
 void _tm_node_init(tm_node *n, tm_block *b)
 {
@@ -884,23 +1192,29 @@ void _tm_node_init(tm_node *n, tm_block *b)
   tm_assert_test(b);
   // _tm_block_validate(b);
   tm_assert_test(b->type);
+
+  /*! Set the tm_block.type. */
   t = b->type;
+
+  /*! Set the tm_node color to tm_WHITE. */
   tm_list_set_color(n, tm_WHITE);
+
+  /*! Initialize its list pointers. */
   tm_list_init(&n->list);
   
-  /* Type node counts. */
+  /*! Increment type node counts. */
   ++ t->n[tm_TOTAL];
   ++ t->n[tm_WHITE];
 
-  /* Block node counts */
+  /*! Increment block node counts */
   ++ b->n[tm_TOTAL];
   ++ b->n[tm_WHITE];
     
-  /* Global node counts. */
+  /*! Increment global node counts. */
   ++ tm.n[tm_TOTAL];
   ++ tm.n[tm_WHITE];
   
-  /* Place on type's list/ */
+  /*! Place tm_node on tm_type tm_WHITE list. */
   tm_node_set_color(n, b, tm_WHITE);
   
   // tm_validate_lists();
@@ -909,6 +1223,9 @@ void _tm_node_init(tm_node *n, tm_block *b)
 }
 
 
+/**
+ * Deletes a WHITE tm_node from a tm_block.
+ */
 static __inline 
 void _tm_node_delete(tm_node *n, tm_block *b)
 {
@@ -921,26 +1238,26 @@ void _tm_node_delete(tm_node *n, tm_block *b)
   tm_assert_test(nc == tm_WHITE);
 
 #if 0 /* See _tm_block_reclaim_nodes() */
-  /* Type node counts. */
+  /*! Decrement type node counts. */
   tm_assert_test(t->n[tm_TOTAL]);
   -- t->n[tm_TOTAL];
   tm_assert_test(t->n[nc]);
   -- t->n[nc];
 
-  /* Block node counts. */
+  /*! Decrement block node counts. */
   tm_assert_test(b->n[tm_TOTAL] > 0);
   -- b->n[tm_TOTAL];
   tm_assert_test(b->n[nc]) > 0);
   -- b->n[nc];
 
-  /* Global node counts. */
+  /*! Decrement global node counts. */
   tm_assert_test(tm.n[tm_TOTAL] > 0);
   -- tm.n[tm_TOTAL];
   tm_assert_test(tm.n[nc] > 0);
   -- tm.n[nc];
 #endif
 
-  /* Remove from type list. */
+  /*! Remove tm_node from tm_type's color list. */
   tm_list_remove(n);
 
   // tm_validate_lists();
@@ -954,6 +1271,10 @@ void _tm_node_delete(tm_node *n, tm_block *b)
 }
 
 
+/**
+ * Allocates some nodes for a tm_type from a block
+ * allocated from the OS.
+ */
 static __inline 
 int _tm_node_alloc_some(tm_type *t, long left)
 {
@@ -961,7 +1282,13 @@ int _tm_node_alloc_some(tm_type *t, long left)
   size_t bytes = 0;
   tm_block *b;
   
-  /* Get allocation block for type. */
+  /*! Get allocation tm_block for tm_type. */
+
+  /**
+   * If a tm_block is already available, use it.
+   * Otherwise allocate a new tm_block.
+   * If allocation failed, give up.
+   */
   if ( ! (b = t->alloc_from_block) ) {
     b = t->alloc_from_block = _tm_block_alloc_for_type(t);
 #if 0
@@ -976,7 +1303,7 @@ int _tm_node_alloc_some(tm_type *t, long left)
   // _tm_block_validate(b);
   
   {
-    /* The next node after allocation. */
+    /*! Until end of tm_block allocation space is reached, */
     void *pe = tm_block_node_begin(b);
     
     while ( (pe = tm_block_node_next(b, tm_block_node_alloc(b))) 
@@ -986,27 +1313,29 @@ int _tm_node_alloc_some(tm_type *t, long left)
       
       // _tm_block_validate(b);
       
+      /*! Allocate a tm_node from the tm_block. */
       n = tm_block_node_alloc(b);
       
-      /* Increment allocation pointer. */
+      /*! Increment tm_block allocation pointer. */
       b->alloc = pe;
       
-      /* Initialize the node. */
+      /*! Initialize the tm_node. */
       _tm_node_init(n, b);
       
-      /* Accounting. */
+      /*! Update local accounting. */
       ++ count;
       bytes += t->size;
       
+      /*! If enought nodes have been allocated, stop. */
       if ( -- left <= 0 ) {
 	goto done;
       }
     }
     
-    /*
-    ** Used up allocation block;
-    ** Force new block allocation next time around. 
-    */
+    /** 
+     * if the end of the tm_block was reached,
+     * Force a new tm_block allocation next time. 
+     */
     t->alloc_from_block = 0;
   }
 
@@ -1015,57 +1344,70 @@ int _tm_node_alloc_some(tm_type *t, long left)
   if ( count )
     tm_msg("N i n%lu b%lu t%lu\n", count, bytes, t->n[tm_WHITE]);
 #endif
-
+  /*! Return the number of tm_nodes actually allocated. */
   return count;
 }
 
-/************************************************************************/
-/* Type creation. */
 
+/*@}*/
+
+/************************************************************************/
+/*! \defgroup type Type */
+/*@{*/
+
+/**
+ * Initialize a new tm_type of a given size.
+ */
 static __inline
 void tm_type_init(tm_type *t, size_t size)
 {
-  /* Assign a type id. */
+  /*! Assign a the tm_type a unique id. */
   t->id = ++ tm.type_id;
 
-  /* Initialize type. */
+  /*! Initialize tm_type's global list pointers. */
   tm_list_init(&t->list);
+  
+  /*! Mark the tm_type as live. */
   tm_list_set_color(&t->list, tm_LIVE_TYPE);
 #if tm_name_GUARD
   t->name = "TYPE";
 #endif
   t->size = size;
+
+  /*! Initialize the tm_types.blocks list. */
   tm_list_init(&t->blocks);
   tm_list_set_color(&t->blocks, tm_LIVE_BLOCK);
   
-  /* Init node counts. */
+  /*! Initialize the tm_type node counts. */
   memset(t->n, 0, sizeof(t->n));
   
-  /* Init node lists. */
+  /*! Initialize the tim_type node color lists. */
   {
     int j;
     
-    for ( j = 0; j < sizeof(t->color_list) / sizeof(t->color_list[0]); j ++ ) {
+    for ( j = 0; j < sizeof(t->color_list) / sizeof(t->color_list[0]); ++ j ) {
       tm_list_init(&t->color_list[j]);
       tm_list_set_color(&t->color_list[j], j);
     }
   }
 
-  /* Force new block to be allocated. */
+  /*! Force a new tm_block to be allocated. */
   t->alloc_from_block = 0;
 
+  /*! Zero the tm_type descriptor. */
   t->desc = 0;
 }
 
 
+/**
+ * Returns a new tm_type for a given size.
+ */
 static __inline 
 tm_type *tm_type_new(size_t size)
 {
   tm_type *t;
 
-  /* Allocate new type desc. */
-
-  /* Take from free list. */
+  /*! If possible take a tm_type from global tm.type_free list. */
   if ( tm.type_free ) {
     t = tm.type_free;
     tm.type_free = t->hash_next;
@@ -1074,40 +1416,48 @@ tm_type *tm_type_new(size_t size)
     t = 0;
   }
 
-  /* Initialize type. */
+  /*! Initialize the tm_type. */
   tm_type_init(t, size);
 
-  /* Add to global types list. */
+  /*! Add to global tm.types list. */
   tm_list_insert(&tm.types, t);
   
-  /*
-  ** To avoid triggering a collection,
-  ** allocate some nodes now so the free list is not empty.
-  */
+  /**
+   * Allocate some tm_nodes now so the tm_type's free list (tm_WHITE) is not empty.
+   * to avoid triggering a collection.
+   *
+   * Assume this is being called because an tm_alloc() is envitable.
+   */
   _tm_node_alloc_some(t, tm_node_alloc_some_size);
 
   return t;
 }
 
 
+/**
+ * Returns the tm.type_hash[] index for a size.
+ */
 static __inline 
 int tm_size_hash(size_t size)
 {
   int i;
 
-  /* IMPLEMENT: support for big allocs. */
+  /*! IMPLEMENT: support for big allocs. */
   tm_assert(size <= tm_block_SIZE_MAX);
 
-  /* Compute hash bucket index. */
+  /*! Compute hash bucket index. */
   i = size / tm_ALLOC_ALIGN;
 
-  /* Modulus into hash bucket index. */
+  /*! Modulus index into hash bucket index. */
   i %= tm_type_hash_LEN;
 
   return i;
 }
 
 
+/**
+ * Look for a type by size.
+ */
 static __inline 
 tm_type *tm_size_to_type_2(size_t size)
 {
@@ -1116,10 +1466,11 @@ tm_type *tm_size_to_type_2(size_t size)
   
   i = tm_size_hash(size);
 
-  /* Look for type by size. */
+  /*! Look for type by size using tm.type_hash. */
   for ( tp = &tm.type_hash[i]; (t = (*tp)); tp = &t->hash_next ) {
+    /*! If a type of the same size is found, */
     if ( t->size == size ) {
-      /* Move t to front of hash bucket. */
+      /* Move it to front of hash bucket. */
       *tp = t->hash_next;
       t->hash_next = tm.type_hash[i];
       tm.type_hash[i] = t;
@@ -1131,17 +1482,20 @@ tm_type *tm_size_to_type_2(size_t size)
 }
 
 
+/**
+ * Returns a new tm_type for a given size.
+ */
 static __inline 
 tm_type *tm_type_new_2(size_t size)
 {
   int i;
   tm_type *t;
 
+  /*! Allocate a new tm_type. */
   t = tm_type_new(size);
   
+  /*! Add to tm.type_hash */
   i = tm_size_hash(t->size);
-
-  /* Add to type hash */
   t->hash_next = tm.type_hash[i];
   tm.type_hash[i] = t;
   
@@ -1153,6 +1507,9 @@ tm_type *tm_type_new_2(size_t size)
 }
 
 
+/**
+ * WHAT DOES THIS DO???
+ */
 tm_adesc *tm_adesc_for_size(tm_adesc *desc, int force_new)
 {
   tm_type *t;
@@ -1171,21 +1528,24 @@ tm_adesc *tm_adesc_for_size(tm_adesc *desc, int force_new)
 }
 
 
+/**
+ * Return a tm_type for a size.
+ */
 static __inline 
 tm_type *tm_size_to_type(size_t size)
 {
   tm_type *t;
   
-  /* Align size to tm_ALLOC_ALIGN. */
+  /*! Align size to tm_ALLOC_ALIGN. */
   size = (size + (tm_ALLOC_ALIGN - 1)) & ~(tm_ALLOC_ALIGN - 1);
 
-  /* Try to find existing type by size. */
+  /*! If there already exists a type of the size, return it. */
   t = tm_size_to_type_2(size);
 
   if ( t )
     return t;
 
-  /* Align size to power of two. */
+  /*! Otherwise, align size to the next power of two. */
 #define POW2(i) if ( size <= (1UL << i) ) size = (1UL << i); else
 
   POW2(3)
@@ -1206,9 +1566,10 @@ tm_type *tm_size_to_type(size_t size)
 
 #undef POW2
 
+  /*! Try to locate a bigger tm_type of that size. */
   t = tm_size_to_type_2(size);
 
-  /* If a type was not found, create a new one. */
+  /* If a tm_type was not found, create a new one. */
   if ( ! t ) {
     t = tm_type_new_2(size);
   }
@@ -1219,34 +1580,44 @@ tm_type *tm_size_to_type(size_t size)
 }
 
 
+/*@}*/
+
 /***************************************************************************/
-/* Sweeping */
+/*! \def group sweep Sweep */
+/*@{*/
 
 
+/**
+ * Sweep an ECRU node to the free list.
+ * If its tm_block is unused, free the block also.
+ */
 static __inline 
 void _tm_node_sweep(tm_node *n, tm_block *b)
 {
-  /* Make sure the node is unmarked. */
+  /*! Make sure the node is unmarked and not in use. */
   tm_assert_test(tm_node_color(n) == tm_ECRU);
   // _tm_block_validate(b);
 
-  /* Clear out data. */
+  /*! Clear out the data portion of the tm_node. */
   memset(tm_node_to_ptr(n), 0, b->type->size);
 
-  /* Put it on the WHITE (free) list. */
+  /*! Put the tm_node on its tm_type free (tm_WHITE) list. */
   tm_node_set_color(n, b, tm_WHITE);
 
 #if 0
   tm_msg("s n%p\n", n);
 #endif
 
-  /* Free the block? */
+  /*! Free the tm_node's tm_block if the tm_block completely unused. */
   if ( tm_block_unused(b) ) {
     _tm_block_free(b);
   }
 }
 
 
+/**
+ * Sweep some tm_ECRU nodes of any type.
+ */
 static 
 size_t _tm_node_sweep_some(int left)
 {
@@ -1272,7 +1643,7 @@ size_t _tm_node_sweep_some(int left)
     tm_node_LOOP_END(tm_ECRU);
   }
 
-  /* Update allocation stats. */
+  /*! Decrement global stats. */
   tm.n[tm_b] -= bytes;
 
 #if 0
@@ -1280,10 +1651,14 @@ size_t _tm_node_sweep_some(int left)
     tm_msg("s c%lu b%lu l%lu\n", count, bytes, tm.n[tm_ECRU]);
 #endif
 
+  /*! Return the global number of tm_ECRU nodes. */
   return tm.n[tm_ECRU];
 }
 
 
+/**
+ * Sweep some nodes for a tm_type.
+ */
 static 
 size_t _tm_node_sweep_some_for_type(tm_type *t, int left)
 {
@@ -1302,7 +1677,7 @@ size_t _tm_node_sweep_some_for_type(tm_type *t, int left)
     }
   }
 
-  /* Update allocation stats. */
+  /*! Decrement global allocation stats. */
   tm.n[tm_b] -= bytes;
 
 #if 0
@@ -1310,24 +1685,38 @@ size_t _tm_node_sweep_some_for_type(tm_type *t, int left)
     tm_msg("s t%p c%lu b%lu l%lu\n", t, count, bytes, tm.n[tm_ECRU]);
 #endif
 
+  /*! Return the number of tm_ECRU nodes for the tm_type. */
   return t->n[tm_ECRU];
 }
 
 
+/**
+ * Sweep all ECRU nodes back to free lists.
+ */
 static 
 void _tm_node_sweep_all()
 {
+  /*! While there are tm_ECRU nodes, */
   while ( tm.n[tm_ECRU] ) {
+    /*! Keep sweeping them. */
     tm_node_LOOP_INIT(tm_ECRU);
     _tm_node_sweep_some(tm.n[tm_ECRU]);
   }
 }
 
 
+/*@}*/
+
 /***************************************************************************/
-/* Unmarking */
+/*! \defgroup unmark Unmark */
+/*@{*/
 
 
+/**
+ * Maybe sweep a tm_block.
+ *
+ * NOT USED!
+ */
 static 
 int _tm_block_sweep_maybe(tm_block *b)
 {
@@ -1335,6 +1724,9 @@ int _tm_block_sweep_maybe(tm_block *b)
 }
 
 
+/**
+ * Sweep some blocks.
+ */
 static 
 int _tm_block_sweep_some()
 {
@@ -1349,6 +1741,8 @@ int _tm_block_sweep_some()
   */
 #endif
 
+  /*! NOT IMPLEMENTED! */
+
 #if 0
   if ( count ) 
     tm_msg("b s b%lu b%lu\n", (unsigned long) count, (unsigned long) bytes);
@@ -1358,10 +1752,9 @@ int _tm_block_sweep_some()
 }
 
 
-/***************************************************************************/
-/* Unmarking */
-
-
+/**
+ * Unmark some tm_BLACK nodes.
+ */
 static 
 size_t _tm_node_unmark_some(long left)
 {
@@ -1391,6 +1784,9 @@ size_t _tm_node_unmark_some(long left)
 }
 
 
+/**
+ * Unmark all tm_BLACK nodes.
+ */
 static 
 void _tm_node_unmark_all()
 {
@@ -1401,10 +1797,16 @@ void _tm_node_unmark_all()
 }
 
 
+/*@}*/
+
 /***************************************************************************/
-/* Full GC. */
+/*! \defgroup gc GC */
+/*@{*/
 
 
+/**
+ * Clear GC stats.
+ */
 static
 void _tm_gc_clear_stats()
 {
@@ -1419,6 +1821,16 @@ void _tm_gc_clear_stats()
 }
 
 
+/**
+ * Force a full GC for a specific type.
+ *
+ * - Unmark all nodes.
+ * - Scan all roots.
+ * - Scan all marked nodes.
+ * - Sweep all unmarked nodes.
+ * - Sweep all unused blocks.
+ * .
+ */
 void _tm_gc_full_type_inner(tm_type *type)
 {
   int try = 0;
@@ -1427,112 +1839,131 @@ void _tm_gc_full_type_inner(tm_type *type)
 
   _tm_sweep_is_error = 0;
 
+  /* Try this twice: */
   while ( try ++ < 2) {
-    /* Unmark all marked nodes. */
+    /*! Unmark all marked nodes. */
     _tm_phase_init(tm_UNMARK);
     _tm_node_unmark_all();
     tm_assert_test(tm.n[tm_BLACK] == 0);
 
-    /* Scan all roots, mark pointers. */
+    /*! Scan all roots, mark pointers. */
     _tm_phase_init(tm_ROOT);
     _tm_root_scan_all();
     
-    /* Scan all marked nodes. */
+    /*! Scan all marked nodes. */
     _tm_phase_init(tm_SCAN);
     _tm_node_scan_all();
     tm_assert_test(tm.n[tm_GREY] == 0);
     
-    /* Sweep the unmarked nodes. */
+    /*! Sweep the unmarked nodes. */
     _tm_phase_init(tm_SWEEP);
     _tm_node_sweep_all();
     tm_assert_test(tm.n[tm_ECRU] == 0);
     
-    /* Unmark all marked nodes. */
+    /*! Unmark all marked nodes. */
     _tm_phase_init(tm_UNMARK);
     _tm_node_unmark_all();
     tm_assert_test(tm.n[tm_BLACK] == 0);
 
-    /* Sweep some blocks? */
+    /*! Possibly sweep some blocks. */
     while ( _tm_block_sweep_some() ) {
     }
 
+    /*! Start tm_UNMARK phase. */
     _tm_phase_init(tm_UNMARK);
   }
 
+  /*! Clear GC stats. */
   _tm_gc_clear_stats();
 
   tm_msg("gc }\n");
 }
 
 
+/**
+ * Force a full GC sequence.
+ */
 void _tm_gc_full_inner()
 {
   _tm_gc_full_type_inner(0);
 }
 
 
+/*@}*/
+
 /***************************************************************************/
-/* allocation */
+/*! \defgroup allocation Allocation */
+/*@{*/
 
 
+/**
+ * Allocates a node from at tm_type's free list.
+ */
 static __inline 
 void *_tm_type_alloc_node_from_free_list(tm_type *t)
 {
   tm_node *n;
+  char *ptr;
 
-  if ( (n = tm_list_first(&t->color_list[tm_WHITE])) ) {
-    char *ptr;
-
-    /* Assert its coming from a valid block. */
-    tm_assert_test(tm_node_to_block(n)->type == t);
-
-    /* It better be free... */
-    tm_assert_test(tm_node_color(n) == tm_WHITE);
-
-    /* A ptr to node's data space. */
-    ptr = tm_node_to_ptr(n);
-
-    /* Clear data space. */
-    memset(ptr, 0, t->size);
-    
-    /* Put it on the appropriate allocated list. */
-    tm_node_set_color(n, tm_node_to_block(n), tm_phase_alloc[tm.phase]);
-
-    /* Mark page used. */
-    _tm_page_mark_used(ptr);
-
-    /* Keep track of allocation amounts. */
-    ++ tm.nodes_allocated_since_gc;
-    tm.bytes_allocated_since_gc += t->size;
-    tm.n[tm_b] += t->size;
-
-#if 0
-    tm_msg("N a n%p[%lu] t%p\n", 
-	   (void*) n, 
-	   (unsigned long) t->size,
-	   (void*) t);
-#endif
-
-    return ptr;
-  } else {
+  /*! If a tm_node is not available on the tm_type's free (tm_WHITE) list, return 0; */
+  if ( ! (n = tm_list_first(&t->color_list[tm_WHITE])) ) {
     return 0;
   }
+
+  /*! Otherwise, */
+
+  /*! Assert its located in a valid tm_block. */
+  tm_assert_test(tm_node_to_block(n)->type == t);
+  
+  /*! Assert that is really tm_WHITE. */
+  tm_assert_test(tm_node_color(n) == tm_WHITE);
+  
+  /*! Get the ptr the tm_node's data space. */
+  ptr = tm_node_to_ptr(n);
+  
+  /*! Clear the data space. */
+  memset(ptr, 0, t->size);
+  
+  /*! Put the tm_node on the appropriate allocated list, depending on the tm.phase. */
+  tm_node_set_color(n, tm_node_to_block(n), tm_phase_alloc[tm.phase]);
+  
+  /*! Mark the tm_node's page as used. */
+  _tm_page_mark_used(ptr);
+  
+  /*! Keep track of allocation amounts. */
+  ++ tm.nodes_allocated_since_gc;
+  tm.bytes_allocated_since_gc += t->size;
+  tm.n[tm_b] += t->size;
+  
+#if 0
+  tm_msg("N a n%p[%lu] t%p\n", 
+	 (void*) n, 
+	 (unsigned long) t->size,
+	 (void*) t);
+#endif
+
+  /*! Return the pointer to the data space. */
+  return ptr;
 }
 
 
-void _tm_free_inner(void *ptr)
-{
-  tm_block *b;
-  tm_node *n;
-
-  n = tm_pure_ptr_to_node(ptr);
-  b = tm_node_to_block(n);
-  // _tm_block_validate(b);
-  tm_assert(tm_node_color(n) != tm_WHITE);
-  tm_node_set_color(n, b, tm_WHITE);
-}
-
-
+/**
+ * Allocates a node of a given type.
+ *
+ * Algorithm:
+ *
+ * Depending on tm.phase, the allocator will do some other work
+ * before returning an data ptr from a tm_node:
+ * - Unmark some allocated nodes (BLACK->ECRU).
+ * - Scan roots (stacks or globals) for pointers to nodes.
+ * - Scan marked nodes for pointers to other nodes (GREY->BLACK).
+ * - Sweep some unused nodes to their free lists (ECRU->WHITE).
+ * .
+ *
+ * A node is taken from the tm_type's free list, or a new
+ * block is allocated and parcelled into the tm_type's free list.
+ *
+ */
 void *_tm_alloc_type_inner(tm_type *t)
 {
   void *ptr;
@@ -1540,35 +1971,48 @@ void *_tm_alloc_type_inner(tm_type *t)
   tm_time_stat *ts;
 #endif
 
+  /*! Increment the allocation id. */
   ++ tm.alloc_id;
+#if 0
+  /* DEBUG DELETE ME! */
   if ( tm.alloc_id == 5040 )
     tm_stop();
+#endif
 
+  /*! Reset during tm_alloc() stats: tm_data.alloc_n. */
   tm.alloc_pass = 0;
   memset(tm.alloc_n, 0, sizeof(tm.alloc_n));
 
+  /*! Assume next allocation phase will be same as current phase. */
   tm.next_phase = (enum tm_phase) -1;
   
   // tm_validate_lists();
 
-  //try_again:
+  /* Try to allocate again? */
   ++ tm.alloc_pass;
+
+  /* BEGIN CRITIAL SECTION */
 
 #if tm_TIME_STAT
   tm_time_stat_begin(ts = &tm.ts_phase[tm.phase]);
 #endif
 
+  /*! If current allocation phase is: */
   switch ( tm.phase ) {
   case tm_UNMARK:
-    /* Unmark some nodes. */
+    /*! - tm_UNMARK: Unmark some tm_BLACK nodes. */
     if ( tm.n[tm_BLACK] ) {
+      /*! If all nodes are unmarked, next phase is tm_ROOT. */
       if ( ! _tm_node_unmark_some(tm_node_unmark_some_size) ) {
 	tm.next_phase = tm_ROOT;
       }
     }
 
-    /* Keep allocating until out of free nodes. */
-    /* Don't keep allocating if allocated > total * tm_GC_THRESHOLD. */
+    /**
+     * Begin tm_ROOT phase if:
+     *
+     * The number of nodes allocated is greater than the total nodes * tm_GC_THRESHOLD.
+     */
 #ifndef tm_GC_THRESHOLD
 #define tm_GC_THRESHOLD 3 / 4
 #endif
@@ -1581,25 +2025,28 @@ void *_tm_alloc_type_inner(tm_type *t)
     break;
     
   case tm_ROOT:
+    /*! - tm_ROOT: scan some roots. */
+    /*! If tm_root_scan_full, */
     if ( tm_root_scan_full ) {
-      /* Scan all roots for pointers, scan marked nodes. */
+      /*! Scan all roots for pointers, next phase is tm_SCAN. */
       _tm_root_scan_all();
       tm.next_phase = tm_SCAN;
     } else {
-      /* Scan some roots for pointers. */
+      /*! Otherwise, scan some roots for pointers. */
       if ( ! _tm_root_scan_some() ) {
+	/*! If there were no roots scanned, next phase is tm_SCAN. */
 	tm.next_phase = tm_SCAN;
       }
     }
     break;
     
   case tm_SCAN:
-    /* Scan a little bit. */
+    /* - tm_SCAN: Scan some tm_ECRU nodes for internal pointers. */
+
+    /*! If scanning is complete, */
     if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
-      /* Scanning is complete. */
-      
       /* 
-      ** If the roots were mutated during mark,
+      ** And if the roots were mutated during mark,
       ** remark all roots.
       ** Rationale: A reference to a new node may have been
       ** copied from the unmarked stack to a global root.
@@ -1607,20 +2054,20 @@ void *_tm_alloc_type_inner(tm_type *t)
       if ( tm_root_scan_full || 
 	   tm.data_mutations || 
 	   tm.stack_mutations ) {
-	/* Mark all roots. */
+	/*! Then, scan all roots. */
 	_tm_root_scan_all();
       } else {
-	/* Mark the stack. */
+	/* Otherwise, scan the stack. */
 	_tm_stack_scan();
       }
       
-      /* 
-      ** If after marking the register and stack,
-      ** no additional nodes were marked,
-      ** begin sweeping.
+      /** 
+       * If after marking the register and stack,
+       * no additional nodes were marked,
+       * begin sweeping.
       */
       if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
-	/* Force SWEEP phase here so new node gets allocated as GREY. */
+	/*! And force SWEEP phase so new node gets allocated as GREY. */
 	_tm_phase_init(tm_SWEEP);
 	tm.next_phase = -1;
       }
@@ -1628,41 +2075,50 @@ void *_tm_alloc_type_inner(tm_type *t)
     break;
       
   case tm_SWEEP:
-    /* 
-    ** Don't bother remarking after root mutations
-    ** because all newly allocated objects are marked "in use" during SWEEP.
-    ** See tm_phase_alloc.
-    */
+    /**
+     * - tm_SWEEP: reclaim any tm_ECRU nodes.
+     *
+     * Do not remark nodes after root mutations
+     * because all newly allocated objects are marked "in use" during SWEEP.
+     * (See tm_phase_alloc).
+     */
 
-    /* If there are nodes to be scanned, do them now. 
-    ** Rational: the grey nodes may have new references 
-    ** to nodes that would otherwise be sweeped.
-    */
+    /* If there are unmarked tm_ECRU nodes, */
     if ( tm.n[tm_ECRU] ) {
-      /* If scan any marked nodes now. */
+      /*! And if there are nodes to be scanned, */
       if ( tm.n[tm_GREY] ) {
+	/*! Scan some tm_GREY nodes. */
 	_tm_node_scan_some(tm_node_scan_some_size * 2);
 	if ( ! tm.n[tm_GREY] ) {
-	  /* For some reason we need to restart the sweep list. */
+	  /*! If any new nodes became tm_GREY, restart the sweep iterator. */
+	  /**
+	   * Rational: the tm_GREY nodes may have new references 
+	   * to nodes that would otherwise be sweeped.
+	   */
 	  tm_node_LOOP_INIT(tm_ECRU);
 	}
       }
+
+      /*! If there are no tm_GREY nodes after scanning any tm_GREY nodes, */
       if ( ! tm.n[tm_GREY] ) {
-	/* Try to immediately sweep nodes for the type we want first. */
-	/* There are no nodes left to sweep. */
+	/**
+	 * Try to immediately sweep nodes for the type request,
+	 * otherwise try to immediately sweep nodes for any type.
+	 */
 	if ( ! 
 	     (
 	      _tm_node_sweep_some_for_type(t, tm_node_sweep_some_size) ||
 	      _tm_node_sweep_some(tm_node_sweep_some_size)
 	      ) 
 	     ) {
-	  /* Start unmarking used nodes. */
+	  /*! If no nodes were swept, */
+	  /*! Start unmarking used nodes. */
 	  tm.next_phase = tm_UNMARK;
 	}
       }
     } else {
-      /* There are no nodes left to sweep. */
-      /* Start unmarking used nodes. */
+      /*! Otherwise, there are no nodes left to sweep: */
+      /*! Start unmarking used nodes. */
       tm.next_phase = tm_UNMARK;
     }
     break;
@@ -1676,17 +2132,19 @@ void *_tm_alloc_type_inner(tm_type *t)
   tm_time_stat_end(ts);
 #endif
 
-  /* Switch to new phase. */
+  /* END CRITIAL SECTION */
+
+  /*! Switch to new phase. */
   if ( tm.next_phase != (enum tm_phase) -1 )
     _tm_phase_init(tm.next_phase);
 
-  /* Keep track of how many allocs per phase. */
+  /*! Increment the number tm_node allocs per phase. */
   ++ tm.alloc_by_phase[tm.phase];
 
-  /* Take one from the free list. */
+  /*! If a node is not available on the tm_type free list, */
   if ( ! (ptr = _tm_type_alloc_node_from_free_list(t)) ) {
 #if 0
-    /* Do we need to check memory pressure here for a full GC? */
+    /*! If memory pressure is high, start a full GC. */
     if ( tm.nodes_allocated_since_gc > 1000 &&
 	 tm.nodes_allocated_since_gc > tm.nodes_in_use_after_gc * 3 / 4 ) {
       fprintf(stderr, "  TM: memory pressure high, full gc\n");
@@ -1694,7 +2152,7 @@ void *_tm_alloc_type_inner(tm_type *t)
     }
 #endif
 
-    /* We must attempt to allocate from current block, a free block or from new block from OS. */
+    /*! And attempt to allocate some nodes from current block, a free block or from new block from OS. */
     _tm_node_alloc_some(t, tm_node_alloc_some_size);
     ptr = _tm_type_alloc_node_from_free_list(t);
 
@@ -1707,8 +2165,8 @@ void *_tm_alloc_type_inner(tm_type *t)
 
   // tm_validate_lists();
 
-  /* Validate tm_ptr_to_node() */
 #if tm_ptr_to_node_TEST
+  /* Validate tm_ptr_to_node() */
   if ( ptr ) {
     char *p = ptr;
     tm_node *n = (void*) (p - tm_node_HDR_SIZE);
@@ -1725,10 +2183,14 @@ void *_tm_alloc_type_inner(tm_type *t)
   }
 #endif
 
+  /*! Return a new data ptr or 0. */
   return (void*) ptr;
 }
 
 
+/**
+ * Allocates a node of a particular size.
+ */
 void *_tm_alloc_inner(size_t size)
 {
   tm_type *type = tm_size_to_type(size);
@@ -1738,6 +2200,9 @@ void *_tm_alloc_inner(size_t size)
 }
 
 
+/**
+ * Allocates a node of a particular type.
+ */
 void *_tm_alloc_desc_inner(tm_adesc *desc)
 {
   tm_type *type = (tm_type*) desc->hidden;
@@ -1747,6 +2212,9 @@ void *_tm_alloc_desc_inner(tm_adesc *desc)
 }
 
 
+/**
+ * Reallocates a node to a particular size.
+ */
 void *_tm_realloc_inner(void *oldptr, size_t size)
 {
   char *ptr = 0;
@@ -1766,13 +2234,37 @@ void *_tm_realloc_inner(void *oldptr, size_t size)
 }
 
 
-/***************************************************************************/
-/* user level routines */
+/*@}*/
 
+
+/**
+ * Manually returns a node back to its tm_type free list.
+ *
+ * Assumes that ptr is pure pointer to the beginning of a tm_node's data space.
+ */
+void _tm_free_inner(void *ptr)
+{
+  tm_block *b;
+  tm_node *n;
+
+  n = tm_pure_ptr_to_node(ptr);
+  b = tm_node_to_block(n);
+  // _tm_block_validate(b);
+  tm_assert(tm_node_color(n) != tm_WHITE);
+  tm_node_set_color(n, b, tm_WHITE);
+}
+
+
+/***************************************************************************/
+/*! \defgroup internal Internal */
+/*@{*/
 
 /* Avoid leaving garbage on the stack. */
 /* Don't put this in user.c, so it cannot be optimized away. */
 
+/**
+ * Internal: Clears some words on the stack to prevent some garabage.
+ */
 void __tm_clear_some_stack_words()
 {
   int some_words[64];
@@ -1780,6 +2272,7 @@ void __tm_clear_some_stack_words()
 }
 
 
+/*@}*/
 /***************************************************************************/
 
 

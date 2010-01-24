@@ -1,20 +1,31 @@
-/* $Id: user.c,v 1.10 2008-01-15 05:21:03 stephens Exp $ */
+/**
+ * \file user.c
+ * \brief Main API/User-level functions.
+ * 
+ * - $Id: user.c,v 1.10 2008-01-15 05:21:03 stephens Exp $
+ */
 
 #include "internal.h"
 
+/*! Uninitialized global memory. */
 int _tm_user_bss[4];
+/*! Initialized global memory. */ 
 int _tm_user_data[4] = { 0, 1, 2, 3 };
 
 /***************************************************************************/
 /* User-level routines. */
 
 
-/*
-** Save the registers and stack pointers, before
-** calling the "inner" routines.
-** Begin timing stats.
-*/
-
+/**
+ * API: Allocate a node.
+ *
+ * - Begin timing stats,
+ * - Clear some stack words,
+ * - Remember current stack pointer,
+ * - Save the registers and stack pointers, 
+ * - Call "inner" routines,
+ * - End timing stats.
+ */
 void *tm_alloc(size_t size)
 {
   void *ptr = 0;
@@ -43,6 +54,16 @@ void *tm_alloc(size_t size)
 }
 
 
+/**
+ * API: Allocate a node based on a allocation descriptor.
+ *
+ * - Begin timing stats,
+ * - Clear some stack words,
+ * - Remember current stack pointer,
+ * - Save the registers and stack pointers, 
+ * - Call "inner" routines,
+ * - End timing stats.
+ */
 void *tm_alloc_desc(tm_adesc *desc)
 {
   void *ptr = 0;
@@ -69,6 +90,18 @@ void *tm_alloc_desc(tm_adesc *desc)
 /***************************************************************************/
 
 
+/**
+ * API: Reallocate a node of a givin size.
+ *
+ * May return the same pointer, a different pointer or 0.
+ *
+ * - Begin timing stats,
+ * - Clear some stack words,
+ * - Remember current stack pointer,
+ * - Save the registers and stack pointers, 
+ * - Call "inner" routines,
+ * - End timing stats.
+ */
 void *tm_realloc(void *oldptr, size_t size)
 {
   void *ptr = 0;
@@ -100,6 +133,16 @@ void *tm_realloc(void *oldptr, size_t size)
 /***************************************************************************/
 
 
+/**
+ * API: Explicitly free a node.
+ *
+ * - Begin timing stats,
+ * - Clear some stack words,
+ * - Remember current stack pointer,
+ * - Save the registers and stack pointers, 
+ * - Call "inner" routines,
+ * - End timing stats.
+ */
 void tm_free(void *ptr)
 {
   if ( ! tm.inited ) {
@@ -123,6 +166,16 @@ void tm_free(void *ptr)
 /***************************************************************************/
 
 
+/**
+ * API: Force a full GC.
+ *
+ * - Begin timing stats,
+ * - Clear some stack words,
+ * - Remember current stack pointer,
+ * - Save the registers and stack pointers, 
+ * - Call "inner" routines,
+ * - End timing stats.
+ */
 void tm_gc_full()
 {
   void *ptr = 0;

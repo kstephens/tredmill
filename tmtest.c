@@ -262,7 +262,9 @@ static int print_my_cons_list(const char *name, my_cons *p)
   tm_msg1("\n");
   tm_msg("*: %s list: }\n", name);
 
+#if 0
   fprintf(stderr, "%s list depth = %d\n", name, result);
+#endif
  
   return result;
 }
@@ -270,7 +272,7 @@ static int print_my_cons_list(const char *name, my_cons *p)
 
 static void *my_int(int i)
 {
-  return (void*) (i << 2) + 1;
+  return (void*) ((long) i << 2) + 1;
 }
 
 

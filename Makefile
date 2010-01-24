@@ -31,6 +31,9 @@ C_FILES = \
   user.c \
   malloc.c
 
+#CFLAGS += -m64
+CFLAGS += -m32
+
 #################################################################
 # Pre
 include $(MAKS)/pre.mak
@@ -64,7 +67,8 @@ $(O_FILES) : $(H_FILES)
 # Make this part of maks.
 doc/html : doc/html/index.html
 doc/html/index.html : $(C_FILES) $(H_FILES) doc/doxygen.conf
-	doxygen doc/doxygen.conf
+	cp -p doc/*.png doc/html/
+	doxygen doc/doxygen.conf 2>&1 | tee doc/doxygen.log
 
 GARBAGE_DIRS += doc/latex
 

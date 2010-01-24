@@ -1,11 +1,12 @@
+/** \file stats.c
+ * \brief Statistics.
+ */
 #include "internal.h"
 
 /***************************************************************************/
-/* Stats. */
-
-
 
 #ifndef tm_USE_times
+/*! If true, use times() to collect timing statistics. */
 #define tm_USE_times 0
 #endif
 
@@ -25,6 +26,9 @@ static __inline double tv_2_double(struct timeval *t)
 #endif
 
 
+/**
+ * Print utilizations.
+ */
 static
 void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size_t *sum)
 {
@@ -82,6 +86,9 @@ void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size
 }
 
 
+/**
+ * API: Print statistics.
+ */
 void tm_print_stats()
 {
   tm_type *t;
@@ -124,6 +131,9 @@ void tm_print_stats()
 }
 
 
+/**
+ * API: Print block statistics.
+ */
 void tm_print_block_stats()
 {
   tm_type *t;
@@ -171,6 +181,9 @@ void tm_print_block_stats()
 void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p);
 
 
+/**
+ * Begin timing stats collection.
+ */
 void tm_time_stat_begin(tm_time_stat *ts)
 {
 #if tm_USE_times
@@ -186,6 +199,9 @@ void tm_time_stat_begin(tm_time_stat *ts)
 }
 
 
+/**
+ * End timing stats collection.
+ */
 void tm_time_stat_end(tm_time_stat *ts)
 {
 #if tm_USE_times
@@ -228,7 +244,9 @@ void tm_time_stat_end(tm_time_stat *ts)
 #endif
 }
 
-
+/**
+ * Print timing stats component.
+ */
 void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p)
 {
 #define tv_fmt "%.7f"
@@ -289,6 +307,9 @@ void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p)
 }
 
 
+/**
+ * API: Print timing stats.
+ */
 void tm_print_time_stats()
 {
   int i;

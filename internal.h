@@ -1,3 +1,6 @@
+/** \file internal.h
+ * \brief Internals.
+ */
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
 
@@ -18,30 +21,38 @@
 #include "util/bitset.h" /* bitset_t */
 
 /****************************************************************************/
-/* Configuration */
+/*! \defgroup configuration Configuration */
+/*@{*/
 
 #ifndef PAGESIZE
+
+/*! The mininum size memory block in the OS. */
 #define PAGESIZE (1 << 13) /* 8192 */
 #endif
 
 #ifndef tm_PAGESIZE
+/*! The size of blocks allocated from the OS. */
 #define tm_PAGESIZE PAGESIZE
 #endif
 
 #ifndef tm_TIME_STAT
-#define tm_TIME_STAT 1 /* Enable timing stats. */
+#define tm_TIME_STAT 1 /*!< If true, enable timing stats. */
 #endif
 
 #ifndef tm_name_GUARD
-#define tm_name_GUARD 0
+#define tm_name_GUARD 0 /*!< If true, enable name guards in internal structures. */
 #endif
 
 #ifndef tm_block_GUARD
-#define tm_block_GUARD 0
+#define tm_block_GUARD 0 /*!< If true, enable data corruption guards in internal structures. */
 #endif
 
+
+/*@}*/
+
 /****************************************************************************/
-/* Color */
+/*! \defgroup color Color */
+/*@{*/
 
 
 /**
@@ -94,16 +105,23 @@ typedef enum tm_color {
 
   /*! Aliases for internal structure coloring. */
 
+  /*! Color of a free tm_block. */
   tm_FREE_BLOCK = tm_WHITE,
+  /*! Color of a live, in-use tm_block. */
   tm_LIVE_BLOCK = tm_ECRU,
+  /*! Color of a free tm_type. */
   tm_FREE_TYPE  = tm_GREY,
+  /*! Color of a live, in-use tm_type. */
   tm_LIVE_TYPE  = tm_BLACK
 
 } tm_color;
 
 
+/*@}*/
+
 /****************************************************************************/
-/* Node */
+/*! \defgroup node Node */
+/*@{*/
 
 
 /**
@@ -125,7 +143,11 @@ typedef struct tm_node {
 #define tm_node_ptr(n) ((void*)(((tm_node*) n) + 1))
 
 
+/*@}*/
+
 /****************************************************************************/
+/*! \defgroup block Block */
+/*@{*/
 
 /**
  * A block allocated from the operating system.
@@ -175,13 +197,19 @@ typedef struct tm_block {
 
 /*! True if the tm_block has no used nodes; i.e. it can be returned to the OS. */
 #define tm_block_unused(b) ((b)->n[tm_WHITE] == b->n[tm_TOTAL])
+/*! The begining address of any tm_nodes parcelled from a tm_block. */
 #define tm_block_node_begin(b) ((void*) (b)->begin)
+/*! The end address of any tm_nodes parcelled from a tm_block. */
 #define tm_block_node_end(b) ((void*) (b)->end)
+/*! The allocation address of the next tm_node to be parcelled from a tm_block. */
 #define tm_block_node_alloc(b) ((void*) (b)->alloc)
+/*! The total size of a tm_node with a useable size based on the tm_block's tm_type size. */
 #define tm_block_node_size(b) ((b)->type->size + tm_node_HDR_SIZE)
+/*! The next adddress of a tm_node parcelled from tm_block. */
 #define tm_block_node_next(b, n) ((void*) (((char*) (n)) + tm_block_node_size(b)))
 
 #if tm_block_GUARD
+/*! Validates a tm_block guards for data corruption. */
 #define _tm_block_validate(b) do { \
    tm_assert_test(b); \
    tm_assert_test(! ((void*) &tm <= (void*) (b) && (void*) (b) < (void*) (&tm + 1))); \
@@ -193,16 +221,21 @@ typedef struct tm_block {
 #endif
 
 
+/*@}*/
+
 /****************************************************************************/
+/*! \defgroup type Type */
+/*@{*/
 
 /**
  * A tm_type represents information about all tm_nodes of a specific size.
  *
- * 1. How many tm_nodes of a given color exists.
- * 2. Lists of tm_nodes by color.
- * 3. Lists of tm_blocks used to parcel tm_nodes.
- * 4. The tm_block for initializing new nodes from.
- * 5. A tm_adesc user-level descriptor.
+ * -# How many tm_nodes of a given color exists.
+ * -# Lists of tm_nodes by color.
+ * -# Lists of tm_blocks used to parcel tm_nodes.
+ * -# The tm_block for initializing new nodes from.
+ * -# A tm_adesc user-level descriptor.
+ * .
  */
 typedef struct tm_type {
   /*! All types list: tm.types */
@@ -231,6 +264,9 @@ typedef struct tm_type {
 } tm_type;
 
 
+/**
+ * Configuration constants.
+ */
 enum tm_config {
   /*! Nothing smaller than this is actually allocated. */
   tm_ALLOC_ALIGN = 8, 
@@ -287,7 +323,11 @@ typedef struct tm_node_iterator {
 } tm_node_iterator;
 
 
+/*@}*/
+
 /****************************************************************************/
+/*! \defgroup phase Phase */
+/*@{*/
 
 /**
  * The phases of the allocator.
@@ -295,7 +335,7 @@ typedef struct tm_node_iterator {
  * These are similar to the phases in 
  * typical in a stop-the-world collector,
  * except that work for these phases is
- * is done during allocation.
+ * done during allocation by tm_alloc().
  */
 enum tm_phase {
   /*! Unmark nodes.           (BLACK->ECRU) */
@@ -311,12 +351,15 @@ enum tm_phase {
 };
 
 
+/*@}*/
+
 /****************************************************************************/
-/* Root sets. */
+/*! \defgroup root_set Root Set */
+/*@{*/
 
 
 /**
- * A root to be scanned for possible pointers.
+ * A root set region to be scanned for possible pointers.
  */
 typedef struct tm_root {
   /*! The name of the root. */
@@ -328,8 +371,11 @@ typedef struct tm_root {
 } tm_root;
 
 
-/****************************************************************************/
+/*@}*/
 
+/****************************************************************************/
+/*! \defgroup internal_data Internal: Data */
+/*@{*/
 
 /**
  * Internal data for the allocator.
@@ -356,7 +402,7 @@ struct tm_data {
   /*! Number of cumulative allocations during each phase. */
   size_t alloc_by_phase[tm_phase_END];
 
-  /*! Current tm_alloc() list change stats. */
+  /*! Stats during tm_alloc(). */
   size_t alloc_n[tm__LAST3];
   
   /*! Types. */
@@ -373,19 +419,25 @@ struct tm_data {
   /*! Type hash table. */
   tm_type *type_hash[tm_type_hash_LEN];
 
-  /* Block. */
+  /*! Blocks: */
+
   tm_block *block_first; /* The first block allocated. */
   tm_block *block_last;  /* The last block allocated. */
 
-  /*! A list of free tm_blocks not returned to os. */
+  /*! A list of free tm_blocks not returned to the OS. */
   tm_list free_blocks;
+  /*! Number of tm_blocks in the free_blocks list. */
   int free_blocks_n;
 
   /*! Block sweeping iterators. */
+
+  /*! Block type. */
   tm_type *bt;
+  /*! Block. */
   tm_block *bb;
 
-  /*! OS-level allocation */
+  /*! OS-level allocation: */
+
   /*! The address of the last allocation from the operating system. */
   void * os_alloc_last;
   /*! The size of the last allocation from the operating system. */
@@ -411,18 +463,25 @@ struct tm_data {
   /*! Type color list iterators. */
   tm_node_iterator node_color_iter[tm_TOTAL];
 
-  /*! Partial scan buffer. */
+  /*! Partial scan buffer: */
+
+  /*! The current node being scanned for pointers. */
   tm_node *scan_node;
+  /*! The current position int the node being scanned for pointers. */
   void *scan_ptr;
+  /*! The scan size. */
   size_t *scan_size;
 
-  /*! Roots */
-  /*! List of roots for scanning. */
+  /*! Roots: */
+
+  /*! List of root regions for scanning. */
   tm_root roots[16];
+  /*! Number of roots regions registered. */
   short nroots;
 
   /*! List of roots to avoid during scanning: anti-roots. */
   tm_root aroots[16]; 
+  /*! Number of anti-roots registered. */
   short naroots;
 
   /*! Huh? */
@@ -444,7 +503,8 @@ struct tm_data {
   /*! How many stack mutations happened since the start of the ROOT phase. */
   unsigned long stack_mutations;
 
-  /*! Stats */
+  /*! Time Stats: */
+
   /*! Time spent in tm_alloc_os(). */
   tm_time_stat ts_os_alloc;
   /*! Time spent in tm_free_os(). */
@@ -462,7 +522,7 @@ struct tm_data {
   /*! Time spent in each phase during tm_alloc().   */
   tm_time_stat   ts_phase[tm_phase_END]; 
     
-  /*! Stats/debugging support. */
+  /*! Stats/debugging support: */
 
   /*! Current allocation id. */
   size_t alloc_id;
@@ -478,13 +538,19 @@ struct tm_data {
   /*! Table of enabled message types. */
   char msg_enable_table[256];
 
-  /*! Full GC stats. */
+  /*! Full GC stats: */
   
+  /*! */
   size_t blocks_allocated_since_gc;
+  /*! */
   size_t blocks_in_use_after_gc;
+  /*! */
   size_t nodes_allocated_since_gc;
+  /*! */
   size_t nodes_in_use_after_gc;
+  /*! */
   size_t bytes_allocated_since_gc;
+  /*! */
   size_t bytes_in_use_after_gc;
 
   /*! File descriptor used by mmap(). */
@@ -498,12 +564,17 @@ struct tm_data {
 /*! Global data. */
 extern struct tm_data tm;
 
+/*! The lowest allocated node address. */
 #define tm_ptr_l tm.ptr_range[0]
+/*! The highest allocated node address. */
 #define tm_ptr_h tm.ptr_range[1]
 
 
+/*@}*/
+
 /**************************************************************************/
-/* Global node color list iterators. */
+/*! \defgroup node_iterator Node: Iterator */
+/*@{*/
 
 
 /*! Initializes a colored node iterator. */
@@ -570,9 +641,11 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
   return 0;
 }
 
+/*! Initialize the iterator of all nodes of a given color. */
 #define tm_node_LOOP_INIT(C) \
   tm_node_iterator_init(&tm.node_color_iter[C])
 
+/*! Begin a loop over all nodes of a given color. */
 #define tm_node_LOOP(C) {						\
   tm_node *n;								\
   tm_type *t = 0;							\
@@ -580,21 +653,27 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
     t = tm.node_color_iter[C].type;					\
     {
 
+/*! Break out of a loop over all nodes of a given color. */
 #define tm_node_LOOP_BREAK(C) break
 
+/*! End a loop over all nodes of a given color. */
 #define tm_node_LOOP_END(C)			\
     }						\
   }						\
 }
 
 
+/*@}*/
+
 /****************************************************************************/
-/* Internal procs. */
+/*! \defgroup internal_routine Internal: Routine */
+/*@{*/
 
 
 /*! Initializes a new allocation phase. */
 void _tm_phase_init(int p);
 
+/*! Sets the color of a tm_node, in a tm_block. */
 void tm_node_set_color(tm_node *n, tm_block *b, tm_color c);
 
 void _tm_set_stack_ptr(void* ptr);
@@ -611,6 +690,8 @@ void *_tm_alloc_desc_inner(tm_adesc *desc);
 void *_tm_realloc_inner(void *ptr, size_t size);
 void _tm_free_inner(void *ptr);
 void _tm_gc_full_inner();
+
+/*@}*/
 
 /****************************************************************************/
 /* Internals */

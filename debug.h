@@ -1,3 +1,6 @@
+/** \file debug.h
+ * \brief Debug support.
+ */
 #ifndef tm_DEBUG_H
 #define tm_DEBUG_H
 

@@ -1,9 +1,14 @@
+/** \file stats.h
+ * \brief Statistics.
+ */
 #ifndef tm_STATS_H
 #define tm_STATS_H
 
 /****************************************************************************/
-/* Stats. */
 
+/**
+ * Timing statstics.
+ */
 typedef struct tm_time_stat {
   const char *name;
   double 

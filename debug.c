@@ -1,8 +1,12 @@
+/** \file debug.c
+ * \brief Debugging support.
+ */
 #include "internal.h"
 
 /****************************************************************************/
 /* Names */
 
+/*! Color names. */
 const char *tm_color_name[] = {
   "WHITE", /* tm_WHITE */
   "ECRU",  /* tm_ECRU */
@@ -23,6 +27,7 @@ const char *tm_color_name[] = {
   0
 };
 
+/*! Struct names. */
 const char *tm_struct_name[] = {
   "FREE_BLOCK",
   "LIVE_BLOCK",
@@ -31,6 +36,7 @@ const char *tm_struct_name[] = {
   0
 };
 
+/*! Phase names. */
 const char *tm_phase_name[] = {
   "UNMARK",  /* tm_UNMARK */
   "ROOTS",  /* tm_ROOT */
@@ -42,11 +48,14 @@ const char *tm_phase_name[] = {
 
 
 /****************************************************************************/
-/* Debug messages. */
+/*! \defgroup debug_message Debug Message */
+/*@{*/
 
+/*! Debug message file handle. */
 FILE *tm_msg_file = 0;
 const char *tm_msg_prefix = "";
 
+/*! Default messaages to enable. */
 const char *tm_msg_enable_default = 
 // "sNpwtFWVAg*r"
    "gFWA"
@@ -54,13 +63,21 @@ const char *tm_msg_enable_default =
 // "RgTFWA"
 ;
 
+/*! Enable all messages? */
 int tm_msg_enable_all = 0;
 
 
+/*@}*/
+
 /****************************************************************************/
-/* Debugging. */
+/*! \defgroup debugging Debugging */
+/*@{*/
 
-
+/**
+ * Enable or disable messages.
+ *
+ * Messages correspond the first character in the format string of tm_msg().
+ */
 void tm_msg_enable(const char *codes, int enable)
 {
   const unsigned char *r;
@@ -77,7 +94,9 @@ void tm_msg_enable(const char *codes, int enable)
   }
 }
 
-
+/**
+ * Prints messages to tm_msg_file.
+ */
 void tm_msg(const char *format, ...)
 {
   va_list vap;
@@ -86,14 +105,15 @@ void tm_msg(const char *format, ...)
   if ( (tm.msg_ignored = ! tm.msg_enable_table[(unsigned char) format[0]]) )
     return;
 
+  /*! Returns if format is empty. */
   if ( ! *format )
     return;
 
-  /* Default tm_msg_file. */
+  /*! Default tm_msg_file to stderr. */
   if ( ! tm_msg_file )
     tm_msg_file = stderr;
 
-  /* Print header. */
+  /*! Print header. */
   fprintf(tm_msg_file, "%s%s%c %6lu t#%d[%lu] ",
 	  tm_msg_prefix,
 	  *tm_msg_prefix ? " " : "",
@@ -102,19 +122,24 @@ void tm_msg(const char *format, ...)
 	  tm.alloc_request_type ? tm.alloc_request_type->id : 0,
 	  (unsigned long) tm.alloc_request_size);
 
+  /*! Print allocation pass if > 1 */
   if ( tm.alloc_pass > 1 )
     fprintf(tm_msg_file, "(pass %lu) ", (unsigned long) tm.alloc_pass);
 
-  /* Print msg. */
+  /*! Print msg. */
   va_start(vap, format);
   vfprintf(tm_msg_file, format, vap);
   va_end(vap);
 
+  /*! Flush IO buffers. */
   fflush(tm_msg_file);
   // fgetc(stdin);
 }
 
 
+/**
+ * Format additional message data.
+ */
 void tm_msg1(const char *format, ...)
 {
   va_list vap;
@@ -134,15 +159,23 @@ void tm_msg1(const char *format, ...)
 }
 
 
+/*@}*/
+
 /****************************************************************************/
-/* Generalize error handling. */
+/* \defgroup error_general Error: General */
+/*@{*/
 
 
-void tm_stop() /* put a debugger break point here! */
+/**
+ * Put a debugger break point here!
+ */
+void tm_stop()
 {
 }
 
-
+/**
+ * Fatal, non-recoverable internal error.
+ */
 void tm_fatal()
 {
   tm_msg("Fatal Aborting!\n");
@@ -152,7 +185,9 @@ void tm_fatal()
   abort();
 }
 
-
+/**
+ * Abort after printing stats.
+ */
 void tm_abort()
 {
   static int in_abort; /* THREAD? */
@@ -168,21 +203,33 @@ void tm_abort()
   tm_fatal();
 }
 
+/*@}*/
 
 /**************************************************************************/
-/* Assertions, warnings. */
+/*! \defgroup assertion Assertion, Warning */
+/*@{*/
 
+/**
+ * Format assertion error.
+ */
 void _tm_assert(const char *expr, const char *file, int lineno)
 {
   tm_msg("\n");
   tm_msg("Fatal assertion \"%s\" failed %s:%d ", expr, file, lineno);
 }
 
+/*@}*/
 
 /**************************************************************************/
-/* Validations. */
+/*! \defgroup validiation Validation */
+/*@{*/
 
 
+/**
+ * Validate internal lists against bookkeeping stats.
+ *
+ * This is expensive.
+ */
 void tm_validate_lists()
 {
   int j;
@@ -264,32 +311,53 @@ void tm_validate_lists()
   tm_assert(n[tm_TOTAL] == tm.n[tm_TOTAL]);
 }
 
+/*@}*/
 
 /***************************************************************************/
-/* Sweeping */
+/* \defgroup error_sweep Error: Sweep */
+/*@{*/
 
 
 #ifndef _tm_sweep_is_error
+/*! If true and sweep occurs, raise a error. */
 int _tm_sweep_is_error = 0;
 #endif
 
+/**
+ * Checks for a unexpected node sweep.
+ *
+ * If a sweep occured at this time,
+ * the mark phase created a free tm_node (tm_WHITE) when it should not have.
+ *
+ * TM failed to mark all tm_nodes as in-use (tm_GREY, or tm_BLACK).
+ *
+ * This can be considered a bug in:
+ * - The write barrier.
+ * - Mutators that failed to use the write barrier.
+ * - Locating nodes for potential pointers.
+ * - Other book-keeping or list management.
+ */
 int _tm_check_sweep_error()
 {
   tm_type *t;
   tm_node *n;
 
+  /*! OK: A sweep is not considered an error. */
   if ( ! _tm_sweep_is_error ) {
     return 0;
   }
 
+  /*! OK: Nothing was left unmarked. */
   if ( ! tm.n[tm_ECRU] ) {
     return 0;
   }
 
+  /*! ERROR: There were some unmarked (tm_ECRU) tm_nodes. */
   tm_msg("Fatal %lu dead nodes; there should be no sweeping.\n", tm.n[tm_ECRU]);
   tm_stop();
   // tm_validate_lists();
   
+  /*! Print each unmarked node. */
   tm_list_LOOP(&tm.types, t);
   {
     tm_list_LOOP(&t->color_list[tm_ECRU], n);
@@ -301,23 +369,25 @@ int _tm_check_sweep_error()
 	     (unsigned long) t->size);
       {
 	void ** vpa = tm_node_to_ptr(n);
-	tm_msg("Fatal cons (%d, %p)\n", ((int) vpa[0]) >> 2, vpa[1]);
-	}
+	tm_msg("Fatal cons (%d, %p)\n", ((long) vpa[0]) >> 2, vpa[1]);
+      }
     }
     tm_list_LOOP_END;
   }
   tm_list_LOOP_END;
   
+  /*! Print stats. */
   tm_print_stats();
   
-  /* Attempting to mark all roots. */
+  /*! Attempt to mark all roots. */
   _tm_phase_init(tm_ROOT);
   _tm_root_scan_all();
   
-  /* Scan all marked nodes. */
+  /*! Scan all marked nodes. */
   _tm_phase_init(tm_SCAN);
   _tm_node_scan_all();
   
+  /*! Was there still unmarked nodes? */
   if ( tm.n[tm_ECRU] ) {
     tm_msg("Fatal after root mark: still missing %lu references.\n",
 	   (unsigned long) tm.n[tm_ECRU]);
@@ -325,6 +395,7 @@ int _tm_check_sweep_error()
     tm_msg("Fatal after root mark: OK, missing references found!\n");
   }
   
+  /*! Mark all the tm_ECRU nodes tm_BLACK */
   tm_list_LOOP(&tm.types, t);
   {
     tm_list_LOOP(&t->color_list[tm_ECRU], n);
@@ -335,15 +406,21 @@ int _tm_check_sweep_error()
   }
   tm_list_LOOP_END;
   
+  /*! Start tm_UNMARK phase. */
   _tm_phase_init(tm_UNMARK);
+  
+  /*! Assert there is no unmarked nodes. */
   tm_assert_test(tm.n[tm_ECRU] == 0);
   
+  /*! Stop in debugger? */
   tm_stop();
   
-  /* Clear worst alloc time. */
+  /*! Clear worst alloc time. */
   memset(&tm.ts_alloc.tw, 0, sizeof(tm.ts_alloc.tw));
   
+  /*! Return 1 to signal an error. */
   return 1;
 }
 
 
+/*@}*/

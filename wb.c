@@ -1,4 +1,8 @@
-/* $Id: wb.c,v 1.3 2008-01-14 00:08:02 stephens Exp $ */
+/** \file wb.c
+ * \brief mprotect() write barrier prototype.
+ *
+ * $Id: wb.c,v 1.3 2008-01-14 00:08:02 stephens Exp $
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -180,25 +184,25 @@ int main(int argc, char **argv)
 
   tm_wb_protect(p, plen);
 
-  fprintf(stderr, "p = %p[%d]\n", p, plen);
+  fprintf(stderr, "p = %p[%lu]\n", p, plen);
 
   xi = 12;
   x = p + xi;
 
   fprintf(stderr, "mutated(%p) = %d\n", x, tm_wb_ptr_mutated_get(x) ? 1 : 0);
-  fprintf(stderr, "%p[%d] = %lu\n", p, xi, * (unsigned long*) x);
+  fprintf(stderr, "%p[%lu] = %lu\n", p, xi, * (unsigned long*) x);
 
-  /* Cause write fault. */
+  /* Cause a write fault. */
   *(long *) x = 12345;
 
   fprintf(stderr, "mutated(%p) = %d\n", x, tm_wb_ptr_mutated_get(x) ? 1 : 0);
-  fprintf(stderr, "%p[%d] = %lu\n", p, xi, * (unsigned long*) x);
+  fprintf(stderr, "%p[%lu] = %lu\n", p, xi, * (unsigned long*) x);
 
-  /* Doesn't cause write fault. */
+  /* Doesn't cause a write fault. */
   *(long *) x = 54321;
 
   fprintf(stderr, "mutated(%p) = %d\n", x, tm_wb_ptr_mutated_get(x) ? 1 : 0);
-  fprintf(stderr, "%p[%d] = %lu\n", p, xi, * (unsigned long*) x);
+  fprintf(stderr, "%p[%lu] = %lu\n", p, xi, * (unsigned long*) x);
 
   return 0;
 }

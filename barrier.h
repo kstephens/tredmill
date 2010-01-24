@@ -1,3 +1,6 @@
+/** \file barrier.h
+ * \brief Write barriers.
+ */
 #ifndef tm_BARRIER_H
 #define tm_BARRIER_H
 

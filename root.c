@@ -1,9 +1,13 @@
+/** \file root.c
+ * \brief Root Sets
+ */
 #include "internal.h"
 
 /****************************************************************************/
-/* Root sets. */
 
-
+/**
+ * Add a single root set.
+ */
 static 
 int _tm_root_add_1(tm_root *a)
 {
@@ -44,6 +48,10 @@ int _tm_root_add_1(tm_root *a)
 #undef MAX_ROOTS
 
 
+/**
+ * Subtract b from a, returning result in c.
+ *
+ */
 static 
 int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
 {
@@ -55,38 +63,60 @@ int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
   if ( b->l > b->h ) {
     tmp = b->l; b->l = b->h; b->h = tmp;
   }
+  /*! Return 0 if b is empty. */
   if ( b->l == b->h ) {
     return 0;
   }
 
   if ( (a->l == b->l) || (b->l <= a->l && a->h <= b->h) ) {
-    /*
+    /**
+     * Case: b in a:
+     *
+     * <pre>
+     *
      * a   L-------------------------------------------H
      * b      L--------------------H
      * c   0
+     *
+     * </pre>
+     *
+     * Return -1.
      */
-
-    /* b in a */
     return -1; /* Delete flag */
   }
   if ( b->h <= a->l || b->l >= a->h ) {
-    /*
+    /**
+     * Case: b out of a:
+     *
+     * <pre>
+     *
      * a   L-------------H                        L--------------H
      * b                   L--------------------H
      * c   0
+     *
+     * </pre>
+     *
+     * Return 0.
      */
-    /* b out a */
     /* *c = *a; */
     return 0;
   }
   if ( a->l < b->l && b->h < a->h ) {
-    /*
+    /**
+     * Case: b is in a:
+     *
+     * <pre>
+     *
      * a            L------H
      * b   H-----------------------H
      * c1                  L-------H
      * c2  L--------H
+     *
+     * </pre>
+     *
+     * Save c1 and c2.
+     * Return 2.
      */
-    /* b is in a */
     c[0] = *a;
     c[0].l = b->h;
     c[1] = *a;
@@ -94,23 +124,37 @@ int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
     return 2;
   }
   if ( a->l < b->h && b->h <= a->h ) {
-    /*
+    /**
+     * Case: b.h in a:
+     *
+     * <pre>
+     *
      * a          L---------------------H
      * b    L--------------------H
      * c                         L------H
+     *
+     * </pre>
+     *
+     * Return 1.
      */
-    /* b.h in a */
     *c = *a;
     c->l = b->h;
     return 1;
   }
   if ( a->l < b->l && b->l <= a->h ) {
-    /*
+    /**
+     * Case: b.l in a:
+     *
+     * <pre>
+     *
      * a   L---------------------H
      * b             L--------------------H
      * c   L---------H
+     *
+     * </pre>
+     *
+     * Return 1.
      */
-    /* b.l in a */
     *c = *a;
     c->h = b->l;
     return 1;
@@ -121,6 +165,9 @@ int tm_root_subtract(tm_root *a, tm_root *b, tm_root *c)
 }
 
 
+/**
+ * Add a root set, while splitting it by anti-roots.
+ */
 static 
 void _tm_root_add(tm_root *a)
 {
@@ -152,6 +199,9 @@ void _tm_root_add(tm_root *a)
 }
 
 
+/**
+ * API: Add a root set.
+ */
 int tm_root_add(const char *name, const void *l, const void *h)
 {
   tm_root a;

@@ -1,4 +1,8 @@
-/* $Id: malloc.c,v 1.2 2002-05-11 02:33:27 stephens Exp $ */
+/** \file malloc.c
+ * \brief Maps malloc(), free(), etc to tm_malloc(), etc.
+ *
+ * $Id: malloc.c,v 1.2 2002-05-11 02:33:27 stephens Exp $
+ */
 
 #include <stdlib.h>
 #include "tm.h"

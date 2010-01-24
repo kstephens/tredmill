@@ -1,7 +1,12 @@
+/** \file os.h
+ * \brief Low-level OS interface.
+ */
 #ifndef tm_OS_H
 #define tm_OS_H
 
+/*! If true, use mmap() and munmap(). */
 #define tm_USE_MMAP 1
+/*! If true, use sbrk(). */
 #define tm_USE_SBRK 0
 
 #if tm_USE_MMAP
