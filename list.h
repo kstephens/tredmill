@@ -17,9 +17,21 @@
  * Can be used as a list on its own or a header for each list element. 
  */
 typedef struct tm_list {
-  struct tm_list *_next; /*!< Pointer to next (or first node). */
-  unsigned long _prev : sizeof(void*) * 8 - 2; /*!< Most-significant bits of pointer to prev node. */
-  unsigned long _color : 2;  /*!< Hidden color in lower 2 bits of prev ptr. */
+  /** Pointer to next list element.
+   * If used as a list header, pointer to first element in list.
+   */
+  struct tm_list *_next;
+ 
+  /** Pointer to next list element.
+   * Most-significant bits only.
+   * If used a as list header, pointer to last element in list.
+   */
+  unsigned long _prev : sizeof(void*) * 8 - 2;
+
+  /**
+   * The hidden color in lower 2 bits of prev pointer.
+   */
+  unsigned long _color : 2;
 } tm_list;
 
 

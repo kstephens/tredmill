@@ -407,6 +407,8 @@ typedef struct tm_root {
  *
  * This structure is specifically avoided by the uninitialized
  * data segment root, using an anti-root.  See tm_init().
+ *
+ * FIXME: this structure is very large due to the statically allocated block bit maps.
  */
 struct tm_data {
   /*! Current status. */

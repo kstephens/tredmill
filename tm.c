@@ -1,5 +1,5 @@
 /** \file tm.c
- * \brief Internals of TM.
+ * \brief Internals
  *
  * - $Id: tm.c,v 1.20 2009-08-01 10:47:31 stephens Exp $
  */
@@ -2269,11 +2269,11 @@ void _tm_free_inner(void *ptr)
 /*! \defgroup internal Internal */
 /*@{*/
 
-/* Avoid leaving garbage on the stack. */
-/* Don't put this in user.c, so it cannot be optimized away. */
-
 /**
- * Internal: Clears some words on the stack to prevent some garabage.
+ * Clears some words on the stack to prevent some garabage.
+ *
+ * Avoid leaving garbage on the stack
+ * Note: Do not move this in to user.c, it might be optimized away.
  */
 void __tm_clear_some_stack_words()
 {

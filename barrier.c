@@ -7,11 +7,23 @@
 /*! \defgroup write_barrier_hook Write Barrier: Hook */
 /*@{*/
 
-/*! Write barrier hook for pointer into stack or data segment root. */
+/**
+ * Write barrier hook for pointer into stack or data segment.
+ */
 void (*_tm_write_root)(void *referent) = __tm_write_root_ignore;
-/*! Write barrier hook for unknown type of pointer (could be on stack, data segment or within tm_alloc() node.) */
+
+/**
+ * Write barrier hook for unknown pointer.
+ * Pointer may be in stack, data segment or within tm_alloc() node.
+ * Pointer may be 0.
+ */
 void (*_tm_write_barrier)(void *referent) = __tm_write_barrier_ignore;
-/*! Write barrier hook for pure pointer (a pointer to beginning of tm_alloc()'ed address.) */
+
+/**
+ * Write barrier hook for a "pure pointer".
+ * A "pure pointer" must point to beginning of tm_alloc()'ed address.
+ * A pure pointer should never be 0.
+ */
 void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_pure_ignore;
 
 /*@}*/
