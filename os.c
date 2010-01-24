@@ -67,7 +67,9 @@ void *_tm_os_alloc_(long size)
   }
 #endif /* tm_USE_SBRK */
 
+#if 0
   fprintf(stderr, "  _tm_os_alloc_(%ld) => %p\n", (long) size, (void*) ptr);
+#endif
 
   return ptr;
 }
@@ -84,7 +86,9 @@ void *_tm_os_alloc_(long size)
 static 
 void *_tm_os_free_(void *ptr, long size)
 {
+#if 0
   fprintf(stderr, "  _tm_os_free_(%p, %ld)\n", (void*) ptr, (long) size);
+#endif
 
   tm_assert_test(ptr != 0);
   tm_assert_test(size > 0);
