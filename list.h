@@ -4,10 +4,13 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
+#include "tredmill/debug.h"
+
 /* $Id: list.h,v 1.8 2008-01-16 04:14:07 stephens Exp $ */
 
 /****************************************************************************/
-
+/*! \defgroup list List */
+/*@{/*/
 
 /**
  * A doubly-linked list header with 2 color bits hidden in the lower bits of the prev pointer.
@@ -17,21 +20,32 @@
  * Can be used as a list on its own or a header for each list element. 
  */
 typedef struct tm_list {
-  /** Pointer to next list element.
+  /**
+   * Pointer to next list element.
    * If used as a list header, pointer to first element in list.
    */
   struct tm_list *_next;
  
-  /** Pointer to next list element.
-   * Most-significant bits only.
-   * If used a as list header, pointer to last element in list.
-   */
-  unsigned long _prev : sizeof(void*) * 8 - 2;
-
   /**
-   * The hidden color in lower 2 bits of prev pointer.
+   * Pointer to next list element with color encoded in lower 2 bits.
    */
-  unsigned long _color : 2;
+  union {
+    /*! Pointer to prev element, uncolored. */
+    struct tm_list *_ptr;
+
+    /*! Pointer word. */
+    unsigned long _word;
+
+    struct {
+#ifdef __LITTLE_ENDIAN
+      unsigned long _bits  : sizeof(void*) * 8 - 2;
+      unsigned long _color : 2;
+#else
+      unsigned long _color : 2;
+      unsigned long _bits  : sizeof(void*) * 8 - 2;
+#endif
+    } _c; /*!< bitfield struct containing color. */
+  } _prev;
 } tm_list;
 
 
@@ -39,30 +53,35 @@ typedef struct tm_list {
 
 
 /*! The color of a tm_list element. */
-#define tm_list_color(l) (((tm_list*) (l))->_color)
+#define tm_list_color(l) (((tm_list*) (l))->_prev._c._color)
+
 /*! Sets the color of a tm_list element. */
-#define tm_list_set_color(l,c) (((tm_list*) (l))->_color = (c))
+#define tm_list_set_color(l,c) (((tm_list*) (l))->_prev._c._color = (c))
 
 /*! Sets the next pointer of a tm_list element. */
 #define tm_list_set_next(l,x) (((tm_list*) (l))->_next = (x))
+
 /*! Sets the prev pointer of a tm_list element. */
-#define tm_list_set_prev(l,x) (((tm_list*) (l))->_prev = ((unsigned long) (x) >> 2))
+#define tm_list_set_prev(l,x) (((tm_list*) (l))->_prev._c._bits = ((unsigned long) (x) >> 2))
+
 /*! The next element of a tm_list element. */
 #define tm_list_next(l) ((void*) ((tm_list*) (l))->_next)
+
 /*! The prev element of a tm_list element. */
-#define tm_list_prev(l) ((void*) (((unsigned long) ((tm_list*) (l))->_prev) << 2))
-/*! Initialize a static tm_list element as empty. */
-#define tm_list_INIT(N) tm_list _##N = { &_##N, &_##N }, *N = &_##N;
+#define tm_list_prev(l) ((void*) ((unsigned long) ((tm_list*) (l))->_prev._word & ~ 0x3UL))
+
+/*! Initialize a static tm_list element as empty and color == 0. */
+#define tm_list_INIT(N) tm_list _##N = { &_##N, { &_##N } }, *N = &_##N;
 
 /**
- * Initialize a tm_list element as empty.
+ * Initialize a tm_list element as empty and color == 0;
  *
  * l->next = l->prev = l;
  */
 static __inline void tm_list_init(void *l)
 {
-  tm_list_set_next(l, l);
-  tm_list_set_prev(l, l);
+  ((tm_list *)l)->_next = l;
+  ((tm_list *)l)->_prev._ptr = l;
 }
 
 
@@ -102,6 +121,7 @@ static __inline void * tm_list_last(void *l)
 /**
  * Removes a tm_list element from its list.
  * Element is marked empty.
+ * Color of element is unchanged.
  */
 static __inline void tm_list_remove(void *_p)
 {
@@ -110,7 +130,8 @@ static __inline void tm_list_remove(void *_p)
   tm_list_set_prev((tm_list*) tm_list_next(p), tm_list_prev(p));
   tm_list_set_next((tm_list*) tm_list_prev(p), tm_list_next(p));
 
-  tm_list_init(p);
+  tm_list_set_next(_p, _p);
+  tm_list_set_prev(_p, _p);
 }
 
 
@@ -193,6 +214,60 @@ static __inline void * tm_list_take_first(void *_l)
 #define tm_list_LOOP(l, x) do { tm_list *__l = (tm_list*) (l), *__x = tm_list_next(__l); while ( (void *) __x != (void *) (l) ) { x = (void*) __x; __x = tm_list_next(__x); {
 /*! End a loop. */
 #define tm_list_LOOP_END }}} while(0)
+
+
+/**
+ * Assert tm_list layout.
+ */
+static __inline
+void tm_list_assert_layout()
+{
+  tm_list_INIT(l);
+  tm_list_INIT(r);
+
+  tm_assert(tm_list_color(l) == 0);
+
+  tm_assert_test(sizeof(tm_list*) == sizeof(void*));
+
+  tm_assert_test(tm_list_next(l) == l);
+  tm_assert_test(tm_list_prev(l) == l);
+  tm_assert_test(l->_prev._c._bits == ((unsigned long) (l)) >> 2);
+  tm_assert_test(tm_list_color(l) == 0);
+  
+  tm_list_set_color(l, 3);
+  tm_assert_test(tm_list_next(l) == l);
+  tm_assert_test(tm_list_prev(l) == l);
+  tm_assert_test(l->_prev._c._bits == ((unsigned long) (l)) >> 2);
+  tm_assert_test(tm_list_color(l) == 3);
+
+  tm_list_set_color(r, 2);
+  tm_list_insert(l, r);
+  tm_assert_test(tm_list_next(l) == (void*) r);
+  tm_assert_test(tm_list_prev(l) == (void*) r);
+  tm_assert_test(tm_list_next(r) == (void*) l);
+  tm_assert_test(tm_list_prev(r) == (void*) l);
+  tm_assert_test(tm_list_color(l) == 3);
+  tm_assert_test(tm_list_color(r) == 2);
+
+  tm_list_remove(r);
+  tm_assert_test(tm_list_next(l) == (void*) l);
+  tm_assert_test(tm_list_prev(l) == (void*) l);
+  tm_assert_test(tm_list_next(r) == (void*) r);
+  tm_assert_test(tm_list_prev(r) == (void*) r);
+  tm_assert_test(tm_list_color(l) == 3);
+  tm_assert_test(tm_list_color(r) == 2);
+
+  tm_list_insert(r, l);
+  tm_assert_test(tm_list_next(l) == (void*) r);
+  tm_assert_test(tm_list_prev(l) == (void*) r);
+  tm_assert_test(tm_list_next(r) == (void*) l);
+  tm_assert_test(tm_list_prev(r) == (void*) l);
+  tm_assert_test(tm_list_color(l) == 3);
+  tm_assert_test(tm_list_color(r) == 2);
+}
+
+
+/*@}/*/
 
 
 #endif
