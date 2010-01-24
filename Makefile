@@ -66,7 +66,8 @@ $(O_FILES) : $(H_FILES)
 
 # Make this part of maks.
 doc/html : doc/html/index.html
-doc/html/index.html : $(C_FILES) $(H_FILES) doc/doxygen.conf
+doc/html/index.html : Makefile $(C_FILES) $(H_FILES) doc/doxygen.conf doc/*.png
+	mkdir -p doc/html
 	cp -p doc/*.png doc/html/
 	doxygen doc/doxygen.conf 2>&1 | tee doc/doxygen.log
 
