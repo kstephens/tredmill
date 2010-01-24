@@ -227,7 +227,7 @@ void tm_print_block_stats()
 
       _tm_block_validate(b);
 
-      tm_msg("X    b%p s%lu ", (void*) b, (unsigned long) b->size);
+      tm_msg("X     b%p s%lu ", (void*) b, (unsigned long) b->size);
 
       for ( j = 0; j < sizeof(b->n)/sizeof(b->n[0]); j ++ ) {
 	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[j]);

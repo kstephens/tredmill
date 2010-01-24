@@ -297,6 +297,7 @@ void _tm_phase_init(int p)
   ++ tm.n_phase_transitions[tm.phase][p];
   ++ tm.n_phase_transitions[tm.phase][tm_phase_END];
   ++ tm.n_phase_transitions[tm_phase_END][p];
+  ++ tm.n_phase_transitions[tm_phase_END][tm_phase_END];
 
   switch ( (tm.phase = p) ) {
   case tm_UNMARK:
@@ -737,6 +738,7 @@ void _tm_node_set_color(tm_node *n, tm_block *b, tm_type *t, tm_color c)
     ++ tm.n_color_transitions[nc][c];
     ++ tm.n_color_transitions[nc][tm_TOTAL];
     ++ tm.n_color_transitions[tm_TOTAL][c];
+    ++ tm.n_color_transitions[tm_TOTAL][tm_TOTAL];
   }
 
   /*! Adjust global stats. */

@@ -1,12 +1,12 @@
 /** \file list.h
  * \brief Colored, doubly-linked lists.
+ *
+ * $Id: list.h,v 1.8 2008-01-16 04:14:07 stephens Exp $
  */
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
 #include "tredmill/debug.h"
-
-/* $Id: list.h,v 1.8 2008-01-16 04:14:07 stephens Exp $ */
 
 /****************************************************************************/
 /*! \defgroup list List */
@@ -31,7 +31,7 @@ typedef struct tm_list {
    */
   union {
     /*! Pointer to prev element, uncolored. */
-    struct tm_list *_ptr;
+    struct tm_list *_prev;
 
     /*! Pointer word. */
     unsigned long _word;
@@ -81,7 +81,7 @@ typedef struct tm_list {
 static __inline void tm_list_init(void *l)
 {
   ((tm_list *)l)->_next = l;
-  ((tm_list *)l)->_prev._ptr = l;
+  ((tm_list *)l)->_prev._prev = l;
 }
 
 
@@ -228,6 +228,7 @@ void tm_list_assert_layout()
   tm_assert(tm_list_color(l) == 0);
 
   tm_assert_test(sizeof(tm_list*) == sizeof(void*));
+  tm_assert_test(sizeof(tm_list*) == sizeof(unsigned long));
 
   tm_assert_test(tm_list_next(l) == l);
   tm_assert_test(tm_list_prev(l) == l);
