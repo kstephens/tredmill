@@ -11,8 +11,8 @@
 
 
 /****************************************************************************/
-/* Pointer determination. */
-
+/*! \defgroup pointer */
+/*@{*/
 
 /*! Returns the tm_type of a tm_block. */
 static __inline 
@@ -25,46 +25,62 @@ tm_type *tm_block_to_type(tm_block *b)
 /**
  * Returns the potential tm_block of a potential pointer.
  *
- * /param p a potential pointer to a tm_node.
- *
- * A potential pointer is referenced as a "pptr".
- *
  * FIXME: This code does not work for blocks bigger than tm_block_SIZE.
  */
 static __inline 
 tm_block *tm_ptr_to_block(char *p)
 {
-
-#if tm_ptr_AT_END_IS_VALID
   /**
    * If tm_ptr_AT_END_IS_VALID is true,
    * A pointer directly at the end of tm_block should be considered
-   * a pointer into the tm_block before it.
+   * a pointer into the tm_block before it,
+   * because there may be a node allocated contigiously before
+   * tm_block header.
    *
-   * Code behaving like this is more common than expected:
-   
-<CODE>
+   * Example:
+   * 
+   * <pre>
+   *
+   * ... ----------------+----------------------------- ... 
+   *          tm_block a | tm_block b                   
+   *     |  node | node  | tm_block HDR | node | node | 
+   * ... ----------------+------------------------------... 
+   *             ^       ^
+   *             |       |
+   *             p!      p?
+   *
+   * </pre>
+   *
+   * Code behaving like this might be pathological, but is valid:
+   * 
+   * <pre>
+   * 
+   *   int *p = tm_alloc(sizeof(p[0]) * 10);
+   *   int i = 10;
+   *   while ( -- i >= 0 ) {
+   *     *(p ++) = i;
+   *     some_function_that_calls_tm_alloc(); 
+   *     //
+   *     // when i == 0, p is (just) past end of tm_alloc() data space and a GC happens.
+   *     // There are no live pointers to the original tm_alloc() data space. 
+   *     //
+   *   }
+   *   p -= 10; 
+   *   // p goes back original tm_alloc() data space, 
+   *   // but p has been reclaimed!
+   *
+   * </pre>
+   */
 
-  int *p = tm_malloc(sizeof(p[0]) * 10);
-  int i = 10;
-  while ( -- i >= 0 ) {
-    *(p ++) = i;
-    some_function_that_calls_tm_malloc(); 
-    // when i == 0, p is (just) past end of tm_malloc()ed space and a GC happens.
-    }
-    p -= 10; // p goes back, p is gone!
-  
-</CODE>
-  */
-
-  char *b; /*!< the pptr aligned to the tm_block_SIZE. */
-  size_t offset; /*! the offset of the pptr in a tm_block. */
+#if tm_ptr_AT_END_IS_VALID
+  char *b; /*!< The pptr aligned to the tm_block_SIZE. */
+  size_t offset; /*! The offset of the pptr in a tm_block. */
 
   /*! Find the offset of p in an aligned tm_block. */
   offset = (((unsigned long) p) % tm_block_SIZE);
   b = p - offset;
   /*! If the pptr is directly at the beginning of the block, */
-  if ( offset == 0 ) {
+  if ( offset == 0 && p ) {
     /*! Assume its in the previous block, by subtracting tm_block_SIZE. */
     b -= tm_block_SIZE;
     tm_msg("P bb p%p b%p\n", (void*) p, (void*) b);
@@ -125,12 +141,19 @@ tm_node *tm_ptr_to_node(void *p)
 {
   tm_block *b;
 
-#if tm_ptr_AT_END_IS_VALID
+#if 0
+  /*! If p is 0, it is not a pointer to a tm_node. */
+  if ( ! p )
+    return 0;
+#endif
+
   /**
    * If tm_ptr_AT_END_IS_VALID is true,
    * A pointer directly at the end of block should be considered
    * a pointer into the block before it.
-  */
+   * See tm_ptr_to_block().
+   */
+#if tm_ptr_AT_END_IS_VALID
   if ( tm_ptr_is_aligned_to_block(p) ) {
     /*! This allows _tm_page_in_use(p) to pass. */
     p = p - 1;
@@ -178,7 +201,6 @@ tm_node *tm_ptr_to_node(void *p)
     {
       unsigned long node_off = pp % node_size;
 
-#if tm_ptr_AT_END_IS_VALID
       /**
        * If tm_ptr_AT_END_IS_VALID is true,
        * If the pointer is directly after a node boundary
@@ -196,13 +218,11 @@ tm_node *tm_ptr_to_node(void *p)
        *
        * </pre>
        *
+       * Translate the pointer back to the tm_block header.
        */
+#if tm_ptr_AT_END_IS_VALID
       if ( node_off == 0 && pp ) {
 	pp -= node_size;
-
-	/**
-	 * Translate back to tm_block header.
-	 */
 	pp += (unsigned long) b + tm_block_HDR_SIZE;
 
 #if 0	
@@ -212,7 +232,7 @@ tm_node *tm_ptr_to_node(void *p)
 #endif
 
 	/**
-	 * If the pointer in the node header
+	 * If the pointer is in the node header,
 	 * it's not a pointer into the node data.
 	 * 
 	 * <pre>
@@ -263,7 +283,7 @@ tm_node *tm_ptr_to_node(void *p)
     if ( tm_node_color(n) == tm_WHITE )
       return 0;
 
-    /*! Must be okay! */
+    /*! Return a node. */
     return n;
   }
 }
@@ -280,5 +300,6 @@ tm_type *tm_node_to_type(tm_node *n)
   return b->type;
 }
 
+/*@}*/
 
 #endif
