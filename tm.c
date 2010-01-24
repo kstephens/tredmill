@@ -72,13 +72,15 @@ Node types can be explicitly created for common sizes that are not a power of tw
 
 The allocator interleaves the following phases with allocation:
 
--# tm_UNMARK: Unmarking scanned blocks for subsequent rooting. (tm_BLACK -> tm_ECRU)
+-# tm_ALLOC: Allocate from OS or parcel nodes from allocated blocks. (tm_WHITE -> tm_ECRU)
+-# tm_UNMARK: Unmarking scanned nodes for subsequent rooting. (tm_BLACK -> tm_ECRU)
 -# tm_ROOT: Root scanning and marking nodes for scanning. (tm_ECRU -> tm_GREY)
 -# tm_SCAN: Scanning marked nodes for interior pointers. (tm_GREY -> tm_BLACK)
 -# tm_SWEEP: Freeing unmarked nodes. (tm_ECRU -> tm_WHITE)
 
 During each call to tm_alloc(), each phase will do some collection work before returning a newly allocated tm_node:
 
+-# tm_ALLOC: Parcel nodes from allocated blocks.  Memory pressure may cause switching to the tm_UNMARK phase.
 -# tm_UNMARK: Allocate tm_nodes from the tm_type’s tm_WHITE list until it is empty. A fixed number of tm_BLACK nodes are returned to the tm_ECRU list. Memory pressure may cause switching to the tm_ROOT phase.
 -# tm_ROOT: A fixed number of roots are scanned for pointers into allocated space. tm_ECRU nodes with valid references are moved to tm_GREY. After all roots are scanned, the next phase is tm_SCAN.
 -# tm_SCAN: A fixed number of node bytes of tm_GREY nodes are scanned for interior pointers and moved to tm_BLACK list. Once all tm_GREY nodes are scanned, the next phase is tm_SWEEP.
@@ -1339,8 +1341,8 @@ void _tm_node_delete(tm_node *n, tm_block *b)
 
 
 /**
- * Allocates some nodes for a tm_type from a block
- * allocated from the OS.
+ * Parcel some nodes for a tm_type from a tm_block
+ * already allocated from the OS.
  */
 static __inline 
 int _tm_node_parcel_some(tm_type *t, long left)
@@ -1349,14 +1351,11 @@ int _tm_node_parcel_some(tm_type *t, long left)
   size_t bytes = 0;
   tm_block *b;
   
-  /*! Get allocation tm_block for tm_type. */
-
   ++ tm.parceling;
 
   /**
-   * If a tm_block is already available, parcel from it.
-   * Otherwise allocate a new tm_block.
-   * If allocation failed, give up.
+   * If a tm_block is already available for parceling, parcel from it.
+   * Otherwise, give up.
    */
   if ( ! (b = t->parcel_from_block) ) {
     goto done;
@@ -1365,14 +1364,14 @@ int _tm_node_parcel_some(tm_type *t, long left)
   // _tm_block_validate(b);
   
   {
-    /*! Until end of tm_block allocation space is reached, */
+    /*! Until end of tm_block parcel space is reached, */
     void *pe = tm_block_node_begin(b);
     
     while ( (pe = tm_block_node_next(b, tm_block_node_next_parcel(b))) 
 	    <= tm_block_node_end(b)
 	    ) {
       tm_node *n;
-      
+        
       // _tm_block_validate(b);
       
       /*! Parcel a tm_node from the tm_block. */
@@ -1382,11 +1381,15 @@ int _tm_node_parcel_some(tm_type *t, long left)
       b->next_parcel = pe;
       
       /*! Update global valid node pointer range. */
-      if ( tm_ptr_l > (void*) tm_node_ptr(n) ) {
-	tm_ptr_l = b->begin;
-      }
-      if ( tm_ptr_h < (void*) pe ) {
-	tm_ptr_h = b->end;
+      {
+	void *ptr;
+
+	if ( tm_ptr_l > (ptr = tm_node_ptr(n)) ) {
+	  tm_ptr_l = ptr;
+	}
+	if ( tm_ptr_h < (ptr = pe) ) {
+	  tm_ptr_h = ptr;
+	}
       }
   
       /*! Initialize the tm_node. */
@@ -1398,14 +1401,14 @@ int _tm_node_parcel_some(tm_type *t, long left)
       ++ count;
       bytes += t->size;
       
-      /*! If enought nodes have been allocated, stop. */
+      /*! If enough nodes have been parceled, stop. */
       if ( -- left <= 0 ) {
 	goto done;
       }
     }
     
     /** 
-     * if the end of the tm_block was reached,
+     * If the end of the tm_block was reached,
      * Force a new tm_block allocation next time. 
      */
     t->parcel_from_block = 0;
@@ -1425,6 +1428,10 @@ int _tm_node_parcel_some(tm_type *t, long left)
 }
 
 
+/**
+ * Parcel some nodes from an existing tm_block,
+ * or allocate a new tm_block and try again.
+ */
 static __inline
 int _tm_node_parcel_or_alloc(tm_type *t)
 {
@@ -1438,6 +1445,7 @@ int _tm_node_parcel_or_alloc(tm_type *t)
     count = _tm_node_parcel_some(t, tm_node_parcel_some_size);
   }
 
+  /*! Return the number of tm_node parcelled. */
   return count;
 }
 

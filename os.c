@@ -158,9 +158,11 @@ void *_tm_os_alloc(long size)
   }
 #endif
 
+#if 0
   if ( tm.n[tm_B] > 16 ) {
     tm_print_stats();
   }
+#endif
 
   // fprintf(stderr, "  _tm_os_alloc(%lu) => %p\n", (unsigned long) size, (void*) ptr);
   
