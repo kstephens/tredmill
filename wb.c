@@ -184,25 +184,25 @@ int main(int argc, char **argv)
 
   tm_wb_protect(p, plen);
 
-  fprintf(stderr, "p = %p[%lu]\n", p, plen);
+  fprintf(stderr, "p = %p[%lu]\n", p, (unsigned long) plen);
 
   xi = 12;
   x = p + xi;
 
   fprintf(stderr, "mutated(%p) = %d\n", x, tm_wb_ptr_mutated_get(x) ? 1 : 0);
-  fprintf(stderr, "%p[%lu] = %lu\n", p, xi, * (unsigned long*) x);
+  fprintf(stderr, "%p[%lu] = %lu\n", p, (unsigned long) xi, * (unsigned long*) x);
 
   /* Cause a write fault. */
   *(long *) x = 12345;
 
   fprintf(stderr, "mutated(%p) = %d\n", x, tm_wb_ptr_mutated_get(x) ? 1 : 0);
-  fprintf(stderr, "%p[%lu] = %lu\n", p, xi, * (unsigned long*) x);
+  fprintf(stderr, "%p[%lu] = %lu\n", p, (unsigned long) xi, * (unsigned long*) x);
 
   /* Doesn't cause a write fault. */
   *(long *) x = 54321;
 
   fprintf(stderr, "mutated(%p) = %d\n", x, tm_wb_ptr_mutated_get(x) ? 1 : 0);
-  fprintf(stderr, "%p[%lu] = %lu\n", p, xi, * (unsigned long*) x);
+  fprintf(stderr, "%p[%lu] = %lu\n", p, (unsigned long) xi, * (unsigned long*) x);
 
   return 0;
 }
