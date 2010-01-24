@@ -417,7 +417,14 @@ struct tm_data {
   /*! The current processing phase. */
   enum tm_phase phase, next_phase;
 
+  /*! Number of transitions from one phase to another. */
+  size_t n_phase_transitions[tm_phase_END + 1][tm_phase_END + 1];
+
+  /*! Number of transitions from one color to another. */
+  size_t n_color_transitions[tm_TOTAL + 1][tm_TOTAL + 1];
+
   /*! Possible actions during current phase. */
+  int parceling;
   int marking;
   int scanning;
   int sweeping;
@@ -533,9 +540,9 @@ struct tm_data {
   /*! Time Stats: */
 
   /*! Time spent in tm_alloc_os(). */
-  tm_time_stat ts_os_alloc;
+  tm_time_stat   ts_os_alloc;
   /*! Time spent in tm_free_os(). */
-  tm_time_stat ts_os_free;
+  tm_time_stat   ts_os_free;
   /*! Time spent in tm_malloc().    */
   tm_time_stat   ts_alloc;
   /*! Time spent in tm_free().     */               
@@ -630,17 +637,22 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
     if ( (void *) ni->type == (void *) &tm.types ) {
       ni->type = (void*) tm_list_next(ni->type);
 
-      /* This should never happen */
+      /*
+       * There are no tm_type at all.
+       * This should never happen!
+       */
       if ( (void *) ni->type == (void *) &tm.types ) {
 	tm_abort();
 	return 0;
       }
       
     next_type:
-      /* Start on type node list. */
+      /* Start on type node color_list. */
       ni->node_next = (void *) &ni->type->color_list[ni->color];
-      
-      /* Move iterator to next node. */
+
+      tm_assert(tm_list_color(ni->node_next) == ni->color);
+
+      /* Move iterator to first node. */
       ni->node_next = (void *) tm_list_next(ni->node_next);
     }
 
@@ -651,7 +663,14 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
     }
 
     if ( tm_node_color(ni->node_next) != ni->color ) {
-      fprintf(stderr, "  node_color_iter[%d] derailed\n", ni->color);
+      fprintf(stderr, "  tm_node_iterator %p: node_color_iter[%s] derailed at node_next %p color %s, t#%d\n",
+	      ni, 
+	      tm_color_name[ni->color], 
+	      ni->node_next, 
+	      tm_color_name[tm_node_color(ni->node_next)],
+	      ni->type->id
+	      );
+      tm_abort();
       ni->type = (void*) tm_list_next(ni->type);
       goto next_type;
     }

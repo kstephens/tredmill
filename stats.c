@@ -127,8 +127,78 @@ void tm_print_stats()
 
   tm_print_time_stats();
 
+  tm_print_color_transition_stats();
+
+  tm_print_phase_transition_stats();
+
   //tm_validate_lists();
 }
+
+
+/**
+ * API: Print color transitions statistics.
+ */
+void tm_print_color_transition_stats()
+{
+  int i, j;
+
+  // tm_assert(sizeof(tm_color_name) / sizeof(tm_color_name[0]) >= tm_TOTAL + 1);
+
+  tm_msg_enable("C", 1);
+  tm_msg("C { color transitions \n");
+
+  tm_msg("C   %-10s ", "from\\to");
+  for ( i = 0; i <= tm_TOTAL; ++ i ) {
+    tm_msg1("%-10s ", tm_color_name[i]);
+  }
+  tm_msg1("\n");
+
+
+  for ( i = 0; i <= tm_TOTAL; ++ i ) {
+    tm_msg("C   %-10s ", tm_color_name[i]);
+    for ( j = 0; j <= tm_TOTAL; ++ j ) {
+      tm_msg1("%-10lu ", (unsigned long) tm.n_color_transitions[i][j]);
+    }
+    tm_msg1("\n");
+  }
+
+  tm_msg("C }\n");
+  tm_msg_enable("C", 0);
+}
+
+
+
+/**
+ * API: Print phase transitions statistics.
+ */
+void tm_print_phase_transition_stats()
+{
+  int i, j;
+  
+  // tm_assert(sizeof(tm_phase_name) / sizeof(tm_phase_name[0]) == tm_phase_END + 1);
+
+  tm_msg_enable("P", 1);
+  tm_msg("P { phase transitions \n");
+
+  tm_msg("P   %-10s ", "from\\to");
+  for ( i = 0; i <= tm_phase_END; ++ i ) {
+    tm_msg1("%-10s ", tm_phase_name[i]);
+  }
+  tm_msg1("\n");
+
+
+  for ( i = 0; i <= tm_phase_END; ++ i ) {
+    tm_msg("P   %-10s ", tm_phase_name[i]);
+    for ( j = 0; j <= tm_phase_END; ++ j ) {
+      tm_msg1("%-10lu ", (unsigned long) tm.n_phase_transitions[i][j]);
+    }
+    tm_msg1("\n");
+  }
+
+  tm_msg("P }\n");
+  tm_msg_enable("P", 0);
+}
+
 
 
 /**
@@ -253,7 +323,7 @@ void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p)
 #define tv_fmt_s "%8.4f"
 #define tv_fmt_args(V) (double) (V)
 
-  tm_msg("T %-12s "
+  tm_msg("T   %-12s "
 	 ,
 	 ts->name);
 

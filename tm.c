@@ -14,12 +14,12 @@ The source code for TM is located at http://kurtstephens.com/pub/tredmill.
 
 TM interleaves marking, scanning and sweeping during each call to tm_alloc().
 
-TM attempts to limit the amount of scanning, marking and collecting
-during each call to tm_alloc() to avoid stopping the world for long
+TM attempts to limit the amount of scanning, marking and sweeping
+during each call to tm_alloc() to avoid "stopping the world" for long
 periods of time.
 
 TM supports type segregation to increase locality of objects of the same type and
-reduce internal fragmentation.
+to reduce internal fragmentation.
 
 The space overhead of each allocated object requires an object header (tm_node) of two address pointers.
 
@@ -179,18 +179,29 @@ Recoloring and marking root set pages can be done in hardware assuming the overh
 /*! \defgroup control Control */
 /*@{*/
 
-long tm_node_alloc_some_size = 8;  /*! Nodes to alloc from block. */
-long tm_node_scan_some_size = 96;  /*! Words to scan per alloc. */
-long tm_node_sweep_some_size = 8;  /*! Nodes to sweep per alloc. */
-long tm_node_unmark_some_size = 8; /*! Nodes to unmark per alloc. */
+/*! Nodes to alloc from block per tm_alloc(). */
+long tm_node_alloc_some_size = 8;
 
-long tm_block_sweep_some_size = 2; /*! Number of blocks to sweep after sweep phase. */
+/*! Words to scan per tm_alloc(). */
+long tm_node_scan_some_size = 96 * 2; 
 
-int tm_block_min_free = 4;         /*! minimum number of tm_blocks to retain. */
+/*! Nodes to sweep per tm_alloc(). */
+long tm_node_sweep_some_size = 8;
 
+/*! Nodes to unmark per tm_alloc(). */
+long tm_node_unmark_some_size = 8;
+
+/*! Number of blocks per tm_alloc() to sweep after sweep phase. */
+long tm_block_sweep_some_size = 2;
+
+/*! Minimum number of tm_blocks to retain on block free list.*/
+int tm_block_min_free = 4;
+
+/* Soft OS allocation limit in bytes. */
 size_t tm_os_alloc_max = 64 * 1024 * 1024; /* 64MiB */
 
-int    tm_root_scan_full = 1;      /*! If true, all root are scanned atomically. */
+/*! If true, all roots are scanned atomically before moving to the SCAN phase.  */
+int    tm_root_scan_full = 1;
 
 /*@}*/
 
@@ -282,6 +293,10 @@ void _tm_phase_init(int p)
   if ( tm.alloc_id == 1987 )
     tm_stop();
 #endif
+
+  ++ tm.n_phase_transitions[tm.phase][p];
+  ++ tm.n_phase_transitions[tm.phase][tm_phase_END];
+  ++ tm.n_phase_transitions[tm_phase_END][p];
 
   switch ( (tm.phase = p) ) {
   case tm_UNMARK:
@@ -468,6 +483,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   tm_msg_enable("WF", 1);
   // tm_msg_enable("b", 1);
+
+  tm_list_assert_layout();
 
   /*! Warn if already initalized. */
   if ( tm.inited ) {
@@ -713,6 +730,14 @@ void _tm_node_set_color(tm_node *n, tm_block *b, tm_type *t, tm_color c)
   /*! Increment cumulative global stats. */
   ++ tm.alloc_n[c];
   ++ tm.alloc_n[tm_TOTAL];
+
+  /*! Increment global color transitions. */
+  if ( ! tm.parceling ) {
+    tm_assert_test(c != nc);
+    ++ tm.n_color_transitions[nc][c];
+    ++ tm.n_color_transitions[nc][tm_TOTAL];
+    ++ tm.n_color_transitions[tm_TOTAL][c];
+  }
 
   /*! Adjust global stats. */
   ++ tm.n[c];
@@ -1206,12 +1231,16 @@ void _tm_node_init(tm_node *n, tm_block *b)
   /*! Set the tm_block.type. */
   t = b->type;
 
-  /*! Set the tm_node color to tm_WHITE. */
-  tm_list_set_color(n, tm_WHITE);
-
   /*! Initialize its list pointers. */
   tm_list_init(&n->list);
-  
+
+#if 1
+  tm_assert_test(tm_list_color(&n->list) == tm_WHITE);
+#else
+  /*! Set the tm_node color to tm_WHITE. */
+  tm_list_set_color(n, tm_WHITE);
+#endif
+
   /*! Increment type node counts. */
   ++ t->n[tm_TOTAL];
   ++ t->n[tm_WHITE];
@@ -1294,6 +1323,8 @@ int _tm_node_alloc_some(tm_type *t, long left)
   
   /*! Get allocation tm_block for tm_type. */
 
+  ++ tm.parceling;
+
   /**
    * If a tm_block is already available, use it.
    * Otherwise allocate a new tm_block.
@@ -1331,7 +1362,9 @@ int _tm_node_alloc_some(tm_type *t, long left)
       
       /*! Initialize the tm_node. */
       _tm_node_init(n, b);
-      
+
+      tm_assert_test(tm_node_color(n) == tm_WHITE);
+
       /*! Update local accounting. */
       ++ count;
       bytes += t->size;
@@ -1350,10 +1383,14 @@ int _tm_node_alloc_some(tm_type *t, long left)
   }
 
   done:
+
+  -- tm.parceling;
+
 #if 0
   if ( count )
     tm_msg("N i n%lu b%lu t%lu\n", count, bytes, t->n[tm_WHITE]);
 #endif
+
   /*! Return the number of tm_nodes actually allocated. */
   return count;
 }
@@ -1391,7 +1428,7 @@ void tm_type_init(tm_type *t, size_t size)
   /*! Initialize the tm_type node counts. */
   memset(t->n, 0, sizeof(t->n));
   
-  /*! Initialize the tim_type node color lists. */
+  /*! Initialize the tm_type.color_list. */
   {
     int j;
     

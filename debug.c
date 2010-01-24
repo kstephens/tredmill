@@ -42,7 +42,7 @@ const char *tm_phase_name[] = {
   "ROOTS",  /* tm_ROOT */
   "SCAN",   /* tm_SCAN */
   "SWEEP",  /* tm_SWEEP */
-  0
+  "Total",        /* tm_phase_END */
 };
 
 
