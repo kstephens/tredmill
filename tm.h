@@ -146,7 +146,7 @@ void tm_print_time_stats();
 /*@}*/
 
 /*******************************************************************************/
-/*! \defgroup control Control */
+/* \defgroup control Control */
 /*@{*/
 
 extern long tm_node_parcel_some_size;

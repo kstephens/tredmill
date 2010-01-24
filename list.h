@@ -78,7 +78,8 @@ typedef struct tm_list {
  *
  * l->next = l->prev = l;
  */
-static __inline void tm_list_init(void *l)
+static __inline 
+void tm_list_init(void *l)
 {
   ((tm_list *)l)->_next = l;
   ((tm_list *)l)->_prev._prev = l;
@@ -88,7 +89,8 @@ static __inline void tm_list_init(void *l)
 /**
  * Returns true if a tm_list element is empty.
  */
-static __inline int tm_list_empty(void *l)
+static __inline 
+int tm_list_empty(void *l)
 {
   return tm_list_next(l) == l;
 }
@@ -98,7 +100,8 @@ static __inline int tm_list_empty(void *l)
  * Returns the first element of a tm_list element.
  * Or 0 if tm_list is empty.
  */
-static __inline void * tm_list_first(void *l)
+static __inline 
+void * tm_list_first(void *l)
 {
   return tm_list_empty(l) ? 
     0 : 
@@ -110,7 +113,8 @@ static __inline void * tm_list_first(void *l)
  * Returns the last element of a tm_list element.
  * Or 0 if tm_list is empty.
  */
-static __inline void * tm_list_last(void *l)
+static __inline 
+void * tm_list_last(void *l)
 {
   return tm_list_empty(l) ? 
     0 : 
@@ -123,7 +127,8 @@ static __inline void * tm_list_last(void *l)
  * Element is marked empty.
  * Color of element is unchanged.
  */
-static __inline void tm_list_remove(void *_p)
+static __inline 
+void tm_list_remove(void *_p)
 {
   tm_list *p = _p;
 
@@ -138,7 +143,8 @@ static __inline void tm_list_remove(void *_p)
 /**
  * Inserts tm_list element p at front of tm_list l.
  */
-static __inline void tm_list_insert(void *l, void *p)
+static __inline 
+void tm_list_insert(void *l, void *p)
 {
   tm_list_set_next(p, tm_list_next(l));
   tm_list_set_prev(p, l);
@@ -151,7 +157,8 @@ static __inline void tm_list_insert(void *l, void *p)
 /**
  * Appends tm_list element p at end of tm_list l.
  */
-static __inline void tm_list_append(void *l, void *p)
+static __inline 
+void tm_list_append(void *l, void *p)
 {
   tm_list_insert(tm_list_prev(l), p);
 }
@@ -160,7 +167,8 @@ static __inline void tm_list_append(void *l, void *p)
 /**
  * Appends tm_list p at end of tm_list l.
  */
-static __inline void tm_list_append_list(void *l, void *p)
+static __inline 
+void tm_list_append_list(void *l, void *p)
 {
   if ( ! tm_list_empty(p) ) {
     tm_list_set_prev(tm_list_next(p), tm_list_prev(l));
@@ -176,7 +184,8 @@ static __inline void tm_list_append_list(void *l, void *p)
 /**
  * Removes tm_list element p and inserts into tm_list l.
  */
-static __inline void tm_list_remove_and_insert(void *l, void *p)
+static __inline 
+void tm_list_remove_and_insert(void *l, void *p)
 {
   tm_list_remove(p);
   tm_list_insert(l, p);
@@ -186,7 +195,8 @@ static __inline void tm_list_remove_and_insert(void *l, void *p)
 /**
  * Removes tm_list element p and appends into tm_list l.
  */
-static __inline void tm_list_remove_and_append(void *l, void *p)
+static __inline 
+void tm_list_remove_and_append(void *l, void *p)
 {
   tm_list_remove(p);
   tm_list_append(l, p);
@@ -197,7 +207,8 @@ static __inline void tm_list_remove_and_append(void *l, void *p)
  * Task first element from tm_list l.
  * Returns 0 if l is empty?
  */
-static __inline void * tm_list_take_first(void *_l)
+static __inline 
+void * tm_list_take_first(void *_l)
 {
   tm_list *l = _l;
   if ( tm_list_next(l) != l ) {
