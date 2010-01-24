@@ -185,6 +185,8 @@ void _tm_node_mark_and_scan_interior(tm_node *n, tm_block *b)
 
 /**
  * Scan node interiors for some pointers.
+ *
+ * Amount is in pointer-aligned words.
  */
 size_t _tm_node_scan_some(size_t amount)
 {
@@ -195,64 +197,69 @@ size_t _tm_node_scan_some(size_t amount)
   do {
     tm_node *n;
 
-    /*! Skip non-BLACK nodes. */
-    if ( gi->node && ! tm_node_color(gi->node) == tm_BLACK ) {
-      gi->ptr = 0;
+    /**
+     * If a node has been scheduled for scanning, skip it if it is no-longer black.
+     * This is a consequence of the write barrier trapping a mutation to a tm_BLACK node.
+     */
+    if ( gi->scan_node && ! tm_node_color(gi->scan_node) == tm_BLACK ) {
+      gi->scan_ptr = 0;
     }
 
     /**
-     * Check node color because write barrier might
-     * have move the current scan node to GREY.
+     * If a there is a tm_node region to scan,
      */
-    if ( gi->ptr ) {
-      while ( gi->ptr + sizeof(void*) < gi->end ) {
-	/* Attempt to mark node at possible pointer. */
-	_tm_mark_possible_ptr(* (void **) gi->ptr);
+    if ( gi->scan_ptr ) {
+      /*! Scan until end of tm_node region, */
+      while ( gi->scan_ptr <= gi->scan_end ) {
+	/*! Attempt to mark node at a possible pointer at the scan pointer, */
+	_tm_mark_possible_ptr(* (void **) gi->scan_ptr);
       
-	gi->ptr += tm_PTR_ALIGN;
+	/*! And increment the current scan pointer. */
+	gi->scan_ptr += tm_PTR_ALIGN;
 
 	++ count;
 	bytes += tm_PTR_ALIGN;
 
-	/* Scanned enough? */
+	/* Stop scanning if the given amount has been scanned. */
 	if ( -- amount <= 0 ) {
 	  goto done;
 	}
       }
 
       /**
-       * Done scanning node:
-       * Reset scan pointer because all scanning maybe complete.
+       * If done done scanning the node entirely,
+       * reset scan pointers.
        */
-      gi->node = 0;
-      gi->ptr = 0;
-      gi->end = 0;
-      gi->size = 0;
+      gi->scan_node = 0;
+      gi->scan_ptr = 0;
+      gi->scan_end = 0;
+      gi->scan_size = 0;
     }
-    /*! Done scanning gi->node. */
+    /*! Done scanning gi->scan_node. */
 
-    /*! If next GREY node, */
+    /*! If there is an tm_GREY node, */
     if ( (n = tm_node_iterator_next(gi)) ) {
       tm_assert_test(tm_node_color(n) == tm_GREY);
 
-      /*! Move to marked (BLACK) list. */
-
       /**
-       * However set the color of the node to BLACK first, 
-       * before scanning for interior pointers.
+       * Move the tm_GREY node to the marked (tm_BLACK) list,
+       * before scheduling it for scanning of interior pointers.
        *
-       * This ensures if
-       * this node is mutated during
+       * This ensures if the node is mutated during
        * interior pointer scanning,
        * the node will be put back on
        * the tm_GREY list by the write barrier.
        */
       tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
 
-      /*! Schedule this node for interior pointer scanning. */
-      gi->ptr  = tm_node_ptr(n);
-      gi->size = gi->type->size;
-      gi->end  = gi->ptr + gi->size;
+      /**
+       * Schedule the now BLACK node for interior pointer scanning.
+       * Avoid words that overlap the end of the node's data region. 
+       */
+      gi->scan_node = n;
+      gi->scan_ptr  = tm_node_ptr(n);
+      gi->scan_size = gi->type->size;
+      gi->scan_end  = gi->scan_ptr + gi->scan_size - sizeof(void*);
     } else {
       goto done;
     }
@@ -264,8 +271,8 @@ size_t _tm_node_scan_some(size_t amount)
     tm_msg("M c%lu b%lu l%lu\n", count, bytes, tm.n[tm_GREY]);
 #endif
 
-  /*! Return true if there are remaining tm_GREY nodes or some pending node left. */
-  return tm.n[tm_GREY] || gi->size;
+  /*! Return true if there are remaining tm_GREY nodes or some node is still being scanned. */
+  return tm.n[tm_GREY] || gi->scan_size;
 }
 
 /**

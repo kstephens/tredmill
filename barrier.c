@@ -96,9 +96,20 @@ void tm_write_barrier_node(tm_node *n)
     /**
      * If node is tm_GREY,
      * it is already marked for scanning.
-     *
-     * BUG??: What if this node is partially scanned already?
      */
+
+    /**
+     * BUG?: What if a tm_GREY node is partially scanned already?
+     *
+     * This should never happen, because tm_GREY nodes are colored
+     * tm_BLACK once they are scheduled for scanning in
+     * _tm_node_scan_some().
+     */
+    if (
+	tm.node_color_iter[tm_GREY].scan_node == n
+	) {
+      tm_abort();
+    }
     break;
 
   case tm_ECRU:
