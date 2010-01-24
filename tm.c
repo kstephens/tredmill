@@ -12,7 +12,7 @@ inspired by Henry Baker’s "Treadmill" paper.
 
 The source code for TM is located at http://kurtstephens.com/pub/tredmill.
 
-TM interleaves marking, scanning and sweeping during each call to tm_malloc().
+TM interleaves marking, scanning and sweeping during each call to tm_alloc().
 
 TM attempts to limit the amount of scanning, marking and collecting
 during each call to tm_alloc() to avoid stopping the world for long
@@ -21,8 +21,8 @@ periods of time.
 TM supports type segregation to increase locality of objects of the same type and
 reduce internal fragmentation.
 
-The space overhead of each object requires two address pointers.
- 
+The space overhead of each allocated object requires an object header (tm_node) of two address pointers.
+
 \section more_info More Information
 
 See:
@@ -84,16 +84,20 @@ During each call to tm_alloc(), each phase will do some collection work before r
 -# tm_SCAN: A fixed number of node bytes of tm_GREY nodes are scanned for interior pointers and moved to tm_BLACK list. Once all tm_GREY nodes are scanned, the next phase is tm_SWEEP.
 -# tm_SWEEP: If there are no more nodes to be scanned, sweep a fixed number of tm_ECRU nodes to the tm_WHITE list. Once all tm_ECRU nodes are sweeped, the collector returns to the tm_UNMARK phase.
 
-As nodes are allocated, marked, scanned, sweeped and unmarked they are moved between the colored lists as follows:
-
-\image html tredmil_states.png "TM Node States"
-\image latex tredmil_states.png "TM Node States" width=10cm
-
 \subsection node_states Node States
 
+As nodes are allocated, marked, scanned, sweeped and unmarked they are moved between the colored lists as follows:
+
+\image html tredmil_states.png "Node States and Transitions"
+\image latex tredmil_states.png "Node States and Transitions" width=10cm
+
+Each tm_type maintains a separate list for each tm_node color.  
+Statistics of the colors of all tm_nodes are kept at the tm_type, tm_block and global level in arrays indexed by color.  
+A total count of all nodes at each level is kept at the offset of tm_N.
+
 In general, newly allocated tm_nodes are taken from the tm_type’s tm_WHITE list and placed on its tm_ECRU list.
-If the type’s tm_WHITE list is empty, an allocation tm_block is requested from the operating system and is scheduled for parceling new tm_WHITE nodes for the type. 
-If the allocation tm_block becomes empty, the process is repeated: another allocation block is requested and parceled.
+If the type’s tm_WHITE list is empty, a tm_block is allocated from the operating system and is scheduled for parceling new tm_WHITE nodes for the type. 
+If the allocation tm_block becomes empty, the process is repeated: another tm_block is allocated and parceled.
 
 A limited number of new free nodes are parceled from the type’s current allocation block as needed and are initialized as new tm_WHITE nodes.
 
@@ -106,9 +110,12 @@ Using tm_GREY during tm_SWEEP is also related to tm_BLACK node mutation, which g
 
 The tm_SWEEP phase will always attempt to scan any tm_GREY nodes before continuing to sweep any tm_ECRU nodes.
 
-The tm_BLACK color might seem a better choice for tm_SWEEP allocations, but this would force young nodes, which are more likely to be garbage, to be kept until the next tm_SWEEP phase. Coloring tm_SWEEP allocations tm_BLACK would also prevent any new interior pointers stored in nodes that may reference tm_ECRU nodes from being scanned before tm_SWEEP is complete.
+The tm_BLACK color might seem a better choice for tm_SWEEP allocations, but this would force young nodes, which are more likely to be garbage, to be kept until the next tm_SWEEP phase. 
+Coloring tm_SWEEP allocations tm_BLACK would also prevent any new interior pointers stored in nodes that may reference tm_ECRU nodes from being scanned before tm_SWEEP is complete.
 
-To prevent thrashing the operating system with tm_block allocation and free requests, a limited number of unused blocks are kept on a global free list.
+If once tm_SWEEP is complete, tm_blocks with no active tm_nodes (i.e. b->n[tm_WHITE] == b->n[tm_TOTAL]) have all their tm_nodes unparcelled and the tm_block is returned to the operating system.
+
+To prevent thrashing the operating system with tm_block allocation and free requests, a limited number of unused blocks are kept on a global tm_block free list.
 
 \subsection aligned_blocks Aligned Blocks
 
@@ -127,7 +134,7 @@ Nodes are segregated by type. Each type has a size. By default, type sizes are r
 
 Each node type has its own colored lists, allocated block lists and accounting. Segregating node types allows allocation requests to be done without scanning tm_WHITE nodes for best fit. However, since types and the blocks are segregated, and nodes of a larger size are not scavenged for smaller sise, this could least to poor actual memory utilization in mutators with small numbers of allocations for many sizes, since a single node allocation for a given size will cause at least one block to requested from the operating system.
 
-The color lists are logically combined from all type for iteration using nested type and node iterators.
+The color lists are logically combined from all types for iteration using nested type and node iterators.
 
 \subsection write_barriers Write Barriers
 
@@ -147,11 +154,14 @@ Stack writes are not barriered, because stack scanning occurs atomically at the 
 
 When entering code where the write barrier protocol is not followed, tm_disable_write_barrier() can be called to put the collector into a “stop-world” collection mode until tm_enable_write_barrier() is called.
 
-A virtual memory write-barrier based on mprotect() might be easier to manage than requiring the mutator to call the write barrier. Recoloring and marking root set pages can be done in hardware assuming the overhead of mprotect() and the SIGSEGV signal handler is low when changing phases and colors.
+A virtual memory write-barrier based on mprotect() might be easier to manage than requiring the mutator to call the write barrier. 
+Recoloring and marking root set pages can be done in hardware assuming the overhead of mprotect() and the SIGSEGV signal handler is low when changing phases and colors.
 
 \subsection issues Issues
 
+- Due to the altering of tm_node headers during all allocation phases, forked processes will mutate pages quickly.
 - TM is not currently thread-safe.
+- TM is not currently operational on 64-bit archtectures due to statically allocation block bit maps.
 - TM does not currently support allocations larger than a tm_block. This will be fixed by using another page-indexed bit vector. A “block-header-in-page” bit vector marks the page of each tm_block header. This bit vector will be scanned backwards to locate the first page that contains the allocation’s block header.
 - TM does not currently support requests for page-aligned allocations. This could be achieved by using a hash table to map page-aligned allocations to its tm_block.
 
@@ -438,7 +448,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   /*! Initialize time stat names. */
   tm.ts_os_alloc.name = "tm_os_alloc";
   tm.ts_os_free.name = "tm_os_free";
-  tm.ts_alloc.name = "tm_malloc";
+  tm.ts_alloc.name = "tm_alloc";
   tm.ts_free.name = "tm_free";
   tm.ts_gc.name = "gc";
   tm.ts_barrier.name = "tm_barrier";
