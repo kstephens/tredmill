@@ -10,7 +10,7 @@
 /**
  * Write barrier hook for pointer into stack or data segment.
  */
-void (*_tm_write_root)(void *referent) = __tm_write_root_ignore;
+void (*_tm_write_barrier_root)(void *referent) = __tm_write_barrier_root_ignore;
 
 /**
  * Write barrier hook for unknown pointer.
@@ -45,7 +45,7 @@ void tm_mark(void *ptr)
 /**
  * ???
  */
-void __tm_write_root_ignore(void *referent)
+void __tm_write_barrier_root_ignore(void *referent)
 {
   tm_abort();
   /* DO NOTHING */
@@ -54,7 +54,7 @@ void __tm_write_root_ignore(void *referent)
 /**
  * ???
  */
-void __tm_write_root_root(void *referent)
+void __tm_write_barrier_root_ROOT(void *referent)
 {
   tm_abort();
   tm_mark(* (void**) referent);
@@ -67,7 +67,7 @@ void __tm_write_root_root(void *referent)
 /**
  * ???
  */
-void __tm_write_root_mark(void *referent)
+void __tm_write_barrier_root_SCAN(void *referent)
 {
   tm_abort();
   tm_mark(* (void**) referent);
@@ -80,7 +80,7 @@ void __tm_write_root_mark(void *referent)
 /**
  * ???
  */
-void __tm_write_root_sweep(void *referent)
+void __tm_write_barrier_root_SWEEP(void *referent)
 {
   tm_abort();
 #if 0
@@ -177,7 +177,7 @@ void __tm_write_barrier_ignore(void *ptr)
  *
  * Don't know if this root has been marked yet or not.
  */
-void __tm_write_barrier_root(void *ptr)
+void __tm_write_barrier_ROOT(void *ptr)
 {
   /*! Begin time stats. */
 #if tm_TIME_STAT
@@ -232,7 +232,7 @@ void __tm_write_barrier_root(void *ptr)
 /**
  * Write barrier during tm_SCAN phase.
  */
-void __tm_write_barrier_mark(void *ptr)
+void __tm_write_barrier_SCAN(void *ptr)
 {
   tm_node *n;
 
@@ -286,7 +286,7 @@ void __tm_write_barrier_mark(void *ptr)
 /**
  * Write barrier during tm_SWEEP phase.
  */
-void __tm_write_barrier_sweep(void *ptr)
+void __tm_write_barrier_SWEEP(void *ptr)
 {
   tm_node *n;
 
@@ -360,7 +360,7 @@ void __tm_write_barrier_pure_ignore(void *ptr)
  *
  * DO NOTHING
  */
-void __tm_write_barrier_pure_root(void *ptr)
+void __tm_write_barrier_pure_ROOT(void *ptr)
 {
 }
 
@@ -368,7 +368,7 @@ void __tm_write_barrier_pure_root(void *ptr)
 /**
  * Write barrier for pure pointers during tm_SCAN.
  */
-void __tm_write_barrier_pure_mark(void *ptr)
+void __tm_write_barrier_pure_SCAN(void *ptr)
 {
   tm_assert_test(tm.phase == tm_SCAN);
   tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
@@ -378,7 +378,7 @@ void __tm_write_barrier_pure_mark(void *ptr)
 /**
  * Write barrier for pure pointers during tm_SWEEP.
  */
-void __tm_write_barrier_pure_sweep(void *ptr)
+void __tm_write_barrier_pure_SWEEP(void *ptr)
 {
   tm_assert_test(tm.phase == tm_SWEEP);
   tm_write_barrier_node(tm_pure_ptr_to_node(ptr));

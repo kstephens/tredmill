@@ -21,12 +21,19 @@
  * If true, a pointer immediately after the end of a node is considered to be "in" the node.
  *
  * For example:
+ *
+ * <pre>
+ *
  *   char *ptr = tm_malloc(10);
  *   for ( int i = 0; i < 10; ++ i ) {
  *      *(ptr ++) = i;
  *   }
  *   something_that_calls_tm_malloc();
  *   ptr -= 10;
+ *
+ * </pre>
+ *
+ * See ptr.h for more information.
  */
 #define tm_ptr_TO_END_IS_VALID 0
 #endif
@@ -89,9 +96,9 @@ void tm_free(void *ptr);
  *
  * Assumes referent is a stack or data segment location.
  */
-extern void (*_tm_write_root)(void *referent);
-/*! Wrapper around _tm_write_root(). */
-#define tm_write_root(X)(*_tm_write_root)(X)
+extern void (*_tm_write_barrier_root)(void *referent);
+/*! Wrapper around _tm_write_barrier_root(). */
+#define tm_write_barrier_root(X)(*_tm_write_barrier_root)(X)
 
 /**
  * Write barrier hook for a pointer to the stack, to a data segment, or within

@@ -142,12 +142,16 @@ The color lists are logically combined from all types for iteration using nested
 
 During the tm_SCAN and tm_SWEEP phase, any tm_BLACK node that is mutated must be rescanned due to the possible introduction of new references from the tm_BLACK node to tm_ECRU nodes. This is achieved by calling tm_write_barrier(&R) in the mutator after modifying R’s contents.
 
-There are two versions of the write barrier:
+There are three versions of the write barrier:
 
 -# tm_write_barrier(R)
 -# tm_write_barrier_pure(R)
+-# tm_write_barrier_root(R)
 
-tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc(). tm_write_barrier_pure(R) cannot be used if R might be an interior pointer or a pointer to a stack or root-allocated object. tm_write_barrier(R) should be used if the address of R is not known to be a pointer to the heap, the stack or global roots.
+tm_write_barrier_pure(R) can be called when R is guaranteed to be a pointer to the head of a node allocated by tm_alloc(). 
+tm_write_barrier_pure(R) cannot be used if R might be an interior pointer or a pointer to a stack or root-allocated object. 
+tm_write_barrier(R) should be used if the address of R is not known to be a pointer to the heap, the stack or global roots.
+tm_write_barrier_root(R) should be used if the address of R is on the stack or global roots.
 If R is a pointing into global roots, tm_write_barrier(R) will cause global root rescanning, if the collector is in the tm_SCAN phase.
 
 Stack writes are not barriered, because stack scanning occurs atomically at the end of tm_ROOT.
@@ -284,7 +288,7 @@ void _tm_phase_init(int p)
     tm.unmarking = 0;
 
     /*! Set up write barrier hooks. */
-    _tm_write_root = __tm_write_root_ignore;
+    _tm_write_barrier_root = __tm_write_barrier_root_ignore;
     _tm_write_barrier = __tm_write_barrier_ignore;
     _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
@@ -306,7 +310,7 @@ void _tm_phase_init(int p)
     tm.n[tm_NU] = tm.n[tm_BLACK];
 
     /*! Set up write barrier hooks. */
-    _tm_write_root = __tm_write_root_ignore;
+    _tm_write_barrier_root = __tm_write_barrier_root_ignore;
     _tm_write_barrier = __tm_write_barrier_ignore;
     _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
@@ -328,9 +332,9 @@ void _tm_phase_init(int p)
     _tm_root_loop_init();
 
     /*! Set up write barrier hooks. */
-    _tm_write_root = __tm_write_root_root;
-    _tm_write_barrier = __tm_write_barrier_root;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_root;
+    _tm_write_barrier_root = __tm_write_barrier_root_ROOT;
+    _tm_write_barrier = __tm_write_barrier_ROOT;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_ROOT;
     break;
 
   case tm_SCAN:
@@ -350,9 +354,9 @@ void _tm_phase_init(int p)
     // tm_node_LOOP_INIT(tm_GREY);
 
     /*! Set up write barrier hooks. */
-    _tm_write_root = __tm_write_root_mark;
-    _tm_write_barrier = __tm_write_barrier_mark;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_mark;
+    _tm_write_barrier_root = __tm_write_barrier_root_SCAN;
+    _tm_write_barrier = __tm_write_barrier_SCAN;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_SCAN;
     break;
 
   case tm_SWEEP:
@@ -375,9 +379,9 @@ void _tm_phase_init(int p)
 
     /*! Set up write barrier hooks: */
     /*! Recolor mutated BLACK nodes to GREY for rescanning. */
-    _tm_write_root = __tm_write_root_sweep;
-    _tm_write_barrier = __tm_write_barrier_sweep;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_sweep;
+    _tm_write_barrier_root = __tm_write_barrier_root_SWEEP;
+    _tm_write_barrier = __tm_write_barrier_SWEEP;
+    _tm_write_barrier_pure = __tm_write_barrier_pure_SWEEP;
     break;
 
   default:
