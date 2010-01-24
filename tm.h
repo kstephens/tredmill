@@ -149,13 +149,15 @@ void tm_print_time_stats();
 /*! \defgroup control Control */
 /*@{*/
 
-extern long tm_node_alloc_some_size;
+extern long tm_node_parcel_some_size;
 extern long tm_root_scan_some_size;
 extern long tm_node_scan_some_size;
 extern long tm_node_sweep_some_size;
-extern long tm_block_sweep_some_size;
 extern long tm_node_unmark_some_size;
+extern long tm_block_sweep_some_size;
+extern int tm_block_min_free;
 extern size_t tm_os_alloc_max;
+extern int tm_root_scan_full;
 
 /*@}*/
 

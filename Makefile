@@ -28,6 +28,7 @@ C_FILES = \
   barrier.c \
   mark.c \
   tm.c \
+  init.c \
   user.c \
   malloc.c
 
