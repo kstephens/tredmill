@@ -33,11 +33,16 @@ void tm_stop();
 
 void _tm_assert(const char *expr, const char *file, int lineno);
 
+#ifndef tm_ASSERT
+#define tm_ASSERT 1
+#endif
+
+#if tm_ASSERT
 #define tm_assert(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
 
-#if 1
 #define tm_assert_test(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
 #else
+#define tm_assert(X,Y...)(void)0
 #define tm_assert_test(X,Y...)(void)0
 #endif
 
