@@ -70,8 +70,9 @@ int _tm_node_mark(tm_node *n)
 static __inline 
 tm_node * _tm_mark_possible_ptr(void *p)
 {
-  tm_node *n = tm_ptr_to_node(p);
-  if ( n && _tm_node_mark(n) )
+  tm_node *n;
+  
+  if ( p && (n = tm_ptr_to_node(p)) && _tm_node_mark(n) )
     return n;
     
   return 0;
