@@ -190,10 +190,13 @@ typedef struct tm_block {
   struct tm_type *type;
   /*! The beginning of the allocation space. */
   char *begin;
+
   /*! The end of allocation space.  When alloc reaches end, the block is fully parceled. */
   char *end;
-  /*! The allocation pointer for new tm_nodes.  Starts at begin.  Nodes as parceled by incrementing this attribute. */
-  char *alloc;
+
+  /*! The next parcel pointer for new tm_nodes.  Starts at begin.  Nodes are parceled by incrementing this attribute. */
+  char *next_parcel;
+
   /*! Number of nodes for this block, indexed by tm_color: includes tm_TOTAL. */
   size_t n[tm__LAST];
 
@@ -215,8 +218,8 @@ typedef struct tm_block {
 /*! The end address of any tm_nodes parcelled from a tm_block. */
 #define tm_block_node_end(b) ((void*) (b)->end)
 
-/*! The allocation address of the next tm_node to be parcelled from a tm_block. */
-#define tm_block_node_alloc(b) ((void*) (b)->alloc)
+/*! The address of the next tm_node to be parcelled from a tm_block. */
+#define tm_block_node_next_parcel(b) ((void*) (b)->next_parcel)
 
 /*! The total size of a tm_node with a useable size based on the tm_block's tm_type size. */
 #define tm_block_node_size(b) ((b)->type->size + tm_node_HDR_SIZE)
@@ -260,8 +263,10 @@ typedef struct tm_block {
 typedef struct tm_type {
   /*! All types list: tm.types */
   tm_list list;
+
   /*! The type id: tm.type_id */
   int id;
+
 #if tm_name_GUARD
   /*! A name for debugging. */
   const char *name;
@@ -269,16 +274,22 @@ typedef struct tm_type {
 
   /*! Hash table next ptr: tm.type_hash[]. */
   struct tm_type *hash_next;  
+
   /*! Size of each tm_node. */
   size_t size;
+
   /*! List of blocks allocated for this type. */                
   tm_list blocks;     
+
   /*! Number of nodes, indexed by tm_color: includes tm_TOTAL, tm_B, tm_NU, tm_b, tm_b_NU stats. */        
   size_t n[tm__LAST2];
+
   /*! Lists of node by color; see tm_node.list. */
   tm_list color_list[tm_TOTAL];
-  /*! The current block we are allocating from. */ 
-  tm_block *alloc_from_block;
+
+  /*! The current block we are parceling from. */ 
+  tm_block *parcel_from_block;
+
   /*! User-specified descriptor handle. */ 
   tm_adesc *desc;
 } tm_type;
@@ -317,6 +328,7 @@ enum tm_config {
 
 /*! Mask to align tm_block pointers. */ 
 #define tm_block_SIZE_MASK ~(((unsigned long) tm_block_SIZE) - 1)
+
 /*! Mask to align page pointers. */ 
 #define tm_page_SIZE_MASK ~(((unsigned long) tm_page_SIZE) - 1)
 
@@ -361,8 +373,10 @@ typedef struct tm_node_iterator {
  * done for short periods within tm_alloc().
  */
 enum tm_phase {
+  /*! Allocate nodes.         (WHITE->ECRU) */
+  tm_ALLOC,
   /*! Unmark nodes.           (BLACK->ECRU) */
-  tm_UNMARK = 0,
+  tm_UNMARK,
   /*! Begin mark roots.       (ECRU->GREY)  */ 
   tm_ROOT,
   /*! Scan marked nodes.      (ECRU->GREY, GREY->BLACK) */
@@ -425,6 +439,7 @@ struct tm_data {
 
   /*! Possible actions during current phase. */
   int parceling;
+  int allocating;
   int marking;
   int scanning;
   int sweeping;

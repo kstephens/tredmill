@@ -68,7 +68,7 @@ void *_tm_os_alloc_(long size)
 #endif /* tm_USE_SBRK */
 
 #if 0
-  fprintf(stderr, "  _tm_os_alloc_(%ld) => %p\n", (long) size, (void*) ptr);
+  fprintf(stderr, "  _tm_os_alloc_(%lu) => %p\n", (unsigned long) size, (void*) ptr);
 #endif
 
   return ptr;
@@ -87,7 +87,7 @@ static
 void *_tm_os_free_(void *ptr, long size)
 {
 #if 0
-  fprintf(stderr, "  _tm_os_free_(%p, %ld)\n", (void*) ptr, (long) size);
+  fprintf(stderr, "  _tm_os_free_(%p, %lu)\n", (void*) ptr, (unsigned long) size);
 #endif
 
   tm_assert_test(ptr != 0);
@@ -143,10 +143,10 @@ void *_tm_os_alloc(long size)
 
   if ( ptr == 0 || ptr == (void*) -1L ) {
     ptr = 0;
-    tm_msg("A 0 %ld\n", (long) size);
+    tm_msg("A 0 %lu\n", (unsigned long) size);
   } else
   if ( size > 0 ) {
-    tm_msg("A a %p[%ld]\n", ptr, (long) size);
+    tm_msg("A a %p[%lu] #%lu\n", ptr, (unsigned long) size, (unsigned long) tm.n[tm_B]);
 
     tm_os_alloc_total += size;
   } else if ( size < 0 ) {
@@ -158,7 +158,11 @@ void *_tm_os_alloc(long size)
   }
 #endif
 
-  // fprintf(stderr, "  _tm_os_alloc(%ld) => %p\n", (long) size, (void*) ptr);
+  if ( tm.n[tm_B] > 16 ) {
+    tm_print_stats();
+  }
+
+  // fprintf(stderr, "  _tm_os_alloc(%lu) => %p\n", (unsigned long) size, (void*) ptr);
   
   return ptr;
 }
@@ -189,7 +193,7 @@ void *_tm_os_free(void *ptr, long size)
     _tm_page_mark_unused_range(ptr, size);
   }
 
-  tm_msg("A d %p[%ld]\n", ptr, (long) size);
+  tm_msg("A d %p[%lu] #%lu\n", ptr, (unsigned long) size, (unsigned long) tm.n[tm_B]);
 
   tm_os_alloc_total -= size;
 
@@ -247,7 +251,7 @@ void *_tm_os_alloc_aligned(size_t size)
      * </pre>
      *
      */
-    tm_msg("A al %p[%lu] %ld %ld\n", (void *) ptr, (long) size, (long) tm_block_SIZE, (long) offset);
+    tm_msg("A al %p[%lu] %lu %ld\n", (void *) ptr, (unsigned long) size, (unsigned long) tm_block_SIZE, (long) offset);
 
     // THREAD-RACE on mmap()? {{{
 
@@ -266,7 +270,7 @@ void *_tm_os_alloc_aligned(size_t size)
     /*! Realign to tm_block_SIZE. */
     offset = ((unsigned long) ptr) % tm_block_SIZE;
 
-    tm_msg("A alr %p[%lu] %ld\n", (void *) ptr, (long) new_size, (long) offset);
+    tm_msg("A alr %p[%lu] %ld\n", (void *) ptr, (unsigned long) new_size, (long) offset);
 
     if ( offset ) {
       left_over = tm_block_SIZE - offset;

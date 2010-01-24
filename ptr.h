@@ -180,7 +180,7 @@ tm_node *tm_ptr_to_node(void *p)
     return 0;
 
   /*! Avoid references to block headers or outsize the allocated space. */ 
-  if ( p > tm_block_node_alloc(b) )
+  if ( p > tm_block_node_next_parcel(b) )
     return 0;
 
   if ( p < tm_block_node_begin(b) )

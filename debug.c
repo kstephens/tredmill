@@ -38,11 +38,12 @@ const char *tm_struct_name[] = {
 
 /*! Phase names. */
 const char *tm_phase_name[] = {
-  "UNMARK",  /* tm_UNMARK */
+  "ALLOC",  /* tm_ALLOC */
+  "UNMARK", /* tm_UNMARK */
   "ROOTS",  /* tm_ROOT */
   "SCAN",   /* tm_SCAN */
   "SWEEP",  /* tm_SWEEP */
-  "Total",        /* tm_phase_END */
+  "Total",  /* tm_phase_END */
 };
 
 
@@ -255,7 +256,7 @@ void tm_validate_lists()
     _tm_block_validate(b);
     tm_assert(tm_list_color(b) == tm_FREE_BLOCK);
     tm_assert(b->type == 0);
-    tm_assert(b->alloc == b->begin);
+    tm_assert(b->next_parcel == b->begin);
   }
   tm_list_LOOP_END;
 
