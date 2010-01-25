@@ -138,6 +138,23 @@ Each node type has its own colored lists, allocated block lists and accounting. 
 
 The color lists are logically combined from all types for iteration using nested type and node iterators.
 
+\subsection data_structures Data Structures
+
+- There is a single, statically allocated tm_data object.
+- A tm_list is used as a doubly-linked list header.  It also encodes color in the lowest bits of its prev pointer.
+- The tm_data object has a tm_list of tm_type objects. 
+- Each tm_type has a tm_list of tm_blocks.
+- Each tm_block is associated with a tm_type.
+- Each tm_type has 4 color tm_list objects containing tm_node objects of the same color.
+- Each tm_block has been parceled into tm_node objects sized by its tm_type.
+- Each tm_data, tm_type and tm_block object has counters for each tm_node color.
+
+\image html  data_structure.png "Example tm_data structure"
+\image latex data_structure.png "Example tm_data structure" width=10cm
+
+The above example has a single tm_type of size 16 with two tm_block objects, and 8 tm_node objects parceled the tm_block objects.
+White tm_node objects are rendered here with a dotted style.
+
 \subsection write_barriers Write Barriers
 
 During the tm_SCAN and tm_SWEEP phase, any tm_BLACK node that is mutated must be rescanned due to the possible introduction of new references from the tm_BLACK node to tm_ECRU nodes. This is achieved by calling tm_write_barrier(&R) in the mutator after modifying R’s contents.

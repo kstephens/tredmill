@@ -67,10 +67,16 @@ $(O_FILES) : $(H_FILES)
 
 # Make this part of maks.
 doc/html : doc/html/index.html
-doc/html/index.html : Makefile $(C_FILES) $(H_FILES) doc/doxygen.conf doc/*.png
+doc/html/index.html : Makefile $(C_FILES) $(H_FILES) doc/doxygen.conf doc/*.png doc/data_structure.png
 	mkdir -p doc/html
 	cp -p doc/*.png doc/html/
 	doxygen doc/doxygen.conf 2>&1 | tee doc/doxygen.log
+
+doc/data_structure.dot : doc/data_structure.rb
+	ruby "$<" "$@"
+
+doc/data_structure.png : doc/data_structure.dot
+	dot -Tpng:cairo:cairo -o "$@" "$<"
 
 GARBAGE_DIRS += doc/latex
 

@@ -1,0 +1,174 @@
+digraph g {
+graph [
+rankdir = "LR"
+clusterrank = "local"
+];
+node [
+fontsize = "6"
+shape = "ellipse"
+];
+edge [
+];
+"tm_data" [
+   label = "<sn>[tm_data]|<s0> type_next: &tm_type@1\l|<s1> type_prev: &tm_type@1\l|<s2> white_count: 3\l|<s3> ecru_count: 2\l|<s4> grey_count: 1\l|<s5> black_count: 2\l"
+   shape = "record"
+   color="green"
+   
+]
+subgraph "clusterM1" {
+  rankdir = "LR"
+
+"tm_type@1" [
+   label = "<sn>[tm_type@1]|<s0> type_next: &tm_data\l|<s1> type_prev: &tm_data\l|<s2> block_next: &tm_block@1\l|<s3> block_prev: &tm_block@2\l|<s4> size: 16\l|<s5> white_count: 3\l|<s6> ecru_count: 2\l|<s7> grey_count: 1\l|<s8> black_count: 2\l|<s9> white: &tm_type@1.white\l|<s10> ecru: &tm_type@1.ecru\l|<s11> grey: &tm_type@1.grey\l|<s12> black: &tm_type@1.black\l"
+   shape = "record"
+   color="red"
+   rank=-1
+]
+"tm_type@1.white" [
+   label = "<sn>[tm_type@1.white]|<s0> node_next: &tm_node@1\l|<s1> node_prev: &tm_node@3\l|<s2> color: white\l"
+   shape = "record"
+   style=dotted
+   
+]
+"tm_type@1.ecru" [
+   label = "<sn>[tm_type@1.ecru]|<s0> node_next: &tm_node@4\l|<s1> node_prev: &tm_node@5\l|<s2> color: ecru\l"
+   shape = "record"
+   color="#C2B280"
+   
+]
+"tm_type@1.grey" [
+   label = "<sn>[tm_type@1.grey]|<s0> node_next: &tm_node@6\l|<s1> node_prev: &tm_node@6\l|<s2> color: grey\l"
+   shape = "record"
+   color="grey"
+   
+]
+"tm_type@1.black" [
+   label = "<sn>[tm_type@1.black]|<s0> node_next: &tm_node@7\l|<s1> node_prev: &tm_node@8\l|<s2> color: black\l"
+   shape = "record"
+   color="black"
+   
+]
+}
+subgraph "clusterM2" {
+  rankdir = "LR"
+
+"tm_block@1" [
+   label = "<sn>[tm_block@1]|<s0> block_next: &tm_block@2\l|<s1> block_prev: &tm_type@1\l|<s2> type: &tm_type@1\l|<s3> white_count: 1\l|<s4> ecru_count: 1\l|<s5> grey_count: 1\l|<s6> black_count: 0\l"
+   shape = "record"
+   color="blue"
+   rank=-1
+]
+"tm_node@1" [
+   label = "<sn>[tm_node@1]|<s0> node_next: &tm_node@2\l|<s1> node_prev: &tm_type@1.white\l|<s2> color: white\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   style=dotted
+   
+]
+"tm_node@4" [
+   label = "<sn>[tm_node@4]|<s0> node_next: &tm_node@5\l|<s1> node_prev: &tm_type@1.ecru\l|<s2> color: ecru\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   color="#C2B280"
+   
+]
+"tm_node@6" [
+   label = "<sn>[tm_node@6]|<s0> node_next: &tm_type@1.grey\l|<s1> node_prev: &tm_type@1.grey\l|<s2> color: grey\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   color="grey"
+   
+]
+}
+subgraph "clusterM3" {
+  rankdir = "LR"
+
+"tm_block@2" [
+   label = "<sn>[tm_block@2]|<s0> block_next: &tm_type@1\l|<s1> block_prev: &tm_block@1\l|<s2> type: &tm_type@1\l|<s3> white_count: 2\l|<s4> ecru_count: 1\l|<s5> grey_count: 0\l|<s6> black_count: 2\l"
+   shape = "record"
+   color="blue"
+   rank=-1
+]
+"tm_node@2" [
+   label = "<sn>[tm_node@2]|<s0> node_next: &tm_node@3\l|<s1> node_prev: &tm_node@1\l|<s2> color: white\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   style=dotted
+   
+]
+"tm_node@3" [
+   label = "<sn>[tm_node@3]|<s0> node_next: &tm_type@1.white\l|<s1> node_prev: &tm_node@2\l|<s2> color: white\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   style=dotted
+   
+]
+"tm_node@5" [
+   label = "<sn>[tm_node@5]|<s0> node_next: &tm_type@1.ecru\l|<s1> node_prev: &tm_node@4\l|<s2> color: ecru\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   color="#C2B280"
+   
+]
+"tm_node@7" [
+   label = "<sn>[tm_node@7]|<s0> node_next: &tm_node@8\l|<s1> node_prev: &tm_type@1.black\l|<s2> color: black\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   color="black"
+   
+]
+"tm_node@8" [
+   label = "<sn>[tm_node@8]|<s0> node_next: &tm_type@1.black\l|<s1> node_prev: &tm_node@7\l|<s2> color: black\l|<s3> data: [16 bytes]\l"
+   shape = "record"
+   color="black"
+   
+]
+}
+"tm_data":"s0" -> "tm_type@1":"sn" [ color="red" ];
+"tm_data":"s1" -> "tm_type@1":"sn" [ color="red" ];
+"tm_type@1":"s0" -> "tm_data":"sn" [ color="green" ];
+"tm_type@1":"s1" -> "tm_data":"sn" [ color="green" ];
+"tm_type@1":"s2" -> "tm_block@1":"sn" [ color="blue" ];
+"tm_type@1":"s3" -> "tm_block@2":"sn" [ color="blue" ];
+"tm_type@1":"s9" -> "tm_type@1.white":"sn" [ style=dotted ];
+"tm_type@1":"s10" -> "tm_type@1.ecru":"sn" [ color="#C2B280" ];
+"tm_type@1":"s11" -> "tm_type@1.grey":"sn" [ color="grey" ];
+"tm_type@1":"s12" -> "tm_type@1.black":"sn" [ color="black" ];
+"tm_type@1" -> "tm_type@1.white" [ style="invis" ];
+"tm_type@1" -> "tm_type@1.ecru" [ style="invis" ];
+"tm_type@1" -> "tm_type@1.grey" [ style="invis" ];
+"tm_type@1" -> "tm_type@1.black" [ style="invis" ];
+"tm_type@1.white":"s0" -> "tm_node@1":"sn" [ style=dotted ];
+"tm_type@1.white":"s1" -> "tm_node@3":"sn" [ style=dotted ];
+"tm_type@1.ecru":"s0" -> "tm_node@4":"sn" [ color="#C2B280" ];
+"tm_type@1.ecru":"s1" -> "tm_node@5":"sn" [ color="#C2B280" ];
+"tm_type@1.grey":"s0" -> "tm_node@6":"sn" [ color="grey" ];
+"tm_type@1.grey":"s1" -> "tm_node@6":"sn" [ color="grey" ];
+"tm_type@1.black":"s0" -> "tm_node@7":"sn" [ color="black" ];
+"tm_type@1.black":"s1" -> "tm_node@8":"sn" [ color="black" ];
+subgraph "clusterM1" -> subgraph "clusterM2" [ style=invis ];
+subgraph "clusterM1" -> subgraph "clusterM3" [ style=invis ];
+"tm_block@1":"s0" -> "tm_block@2":"sn" [ color="blue" ];
+"tm_block@1":"s1" -> "tm_type@1":"sn" [ color="red" ];
+"tm_block@1":"s2" -> "tm_type@1":"sn" [ color="red" ];
+"tm_block@1" -> "tm_node@1" [ style="invis" ];
+"tm_block@1" -> "tm_node@4" [ style="invis" ];
+"tm_block@1" -> "tm_node@6" [ style="invis" ];
+"tm_node@1":"s0" -> "tm_node@2":"sn" [ style=dotted ];
+"tm_node@1":"s1" -> "tm_type@1.white":"sn" [ style=dotted ];
+"tm_node@4":"s0" -> "tm_node@5":"sn" [ color="#C2B280" ];
+"tm_node@4":"s1" -> "tm_type@1.ecru":"sn" [ color="#C2B280" ];
+"tm_node@6":"s0" -> "tm_type@1.grey":"sn" [ color="grey" ];
+"tm_node@6":"s1" -> "tm_type@1.grey":"sn" [ color="grey" ];
+"tm_block@2":"s0" -> "tm_type@1":"sn" [ color="red" ];
+"tm_block@2":"s1" -> "tm_block@1":"sn" [ color="blue" ];
+"tm_block@2":"s2" -> "tm_type@1":"sn" [ color="red" ];
+"tm_block@2" -> "tm_node@2" [ style="invis" ];
+"tm_block@2" -> "tm_node@3" [ style="invis" ];
+"tm_block@2" -> "tm_node@5" [ style="invis" ];
+"tm_block@2" -> "tm_node@7" [ style="invis" ];
+"tm_block@2" -> "tm_node@8" [ style="invis" ];
+"tm_node@2":"s0" -> "tm_node@3":"sn" [ style=dotted ];
+"tm_node@2":"s1" -> "tm_node@1":"sn" [ style=dotted ];
+"tm_node@3":"s0" -> "tm_type@1.white":"sn" [ style=dotted ];
+"tm_node@3":"s1" -> "tm_node@2":"sn" [ style=dotted ];
+"tm_node@5":"s0" -> "tm_type@1.ecru":"sn" [ color="#C2B280" ];
+"tm_node@5":"s1" -> "tm_node@4":"sn" [ color="#C2B280" ];
+"tm_node@7":"s0" -> "tm_node@8":"sn" [ color="black" ];
+"tm_node@7":"s1" -> "tm_type@1.black":"sn" [ color="black" ];
+"tm_node@8":"s0" -> "tm_type@1.black":"sn" [ color="black" ];
+"tm_node@8":"s1" -> "tm_node@7":"sn" [ color="black" ];
+}
