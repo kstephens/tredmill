@@ -8,6 +8,34 @@
 /*! \defgroup root_set_scan Root Set: Scanning */
 /*@}*/
 
+/*
+ * Scan an address range for potential pointers.
+ */
+__inline
+void _tm_range_scan(const void *b, const void *e)
+{
+  const char *p;
+
+  /* Avoid overlapping pointer. */
+  e = ((char *) e) - sizeof(void*);
+
+  for ( p = b; 
+	(char*) p <= (char*) e; 
+	p += tm_PTR_ALIGN ) {
+#if 0
+    tm_node *n = 
+#endif
+      _tm_mark_possible_ptr(* (void**) p);
+
+#if 0
+    if ( n ) {
+      tm_msg("M n%p p%p\n", n, p);
+    }
+#endif
+  }
+}
+
+
 /*! Amount of roots words to scan per tm_malloc() */
 long tm_root_scan_some_size = 512;
 
@@ -143,44 +171,32 @@ int _tm_root_scan_some()
 /*! \defgroup marking Marking */
 /*@{*/
 
-/*
- * Scan an address range for potential pointers.
+/**
+ * Marks a possible pointer.
+ *
+ * tm_root_write() should be called after modifing a root ptr.
  */
-void _tm_range_scan(const void *b, const void *e)
+void tm_mark(void *ptr)
 {
-  const char *p;
-
-  for ( p = b; 
-	((char*) p + sizeof(void*)) <= (char*) e; 
-	p += tm_PTR_ALIGN ) {
-#if 0
-    tm_node *n = 
-#endif
-      _tm_mark_possible_ptr(* (void**) p);
-
-#if 0
-    if ( n ) {
-      tm_msg("M n%p p%p\n", n, p);
-    }
-#endif
-  }
+  _tm_mark_possible_ptr(ptr);
 }
 
 
-#if 0
-static __inline
-void _tm_node_mark_and_scan_interior(tm_node *n, tm_block *b)
+void _tm_node_scan(tm_node *n)
 {
-  tm_assert_test(tm_node_to_block(n) == b);
-  tm_assert_test(tm_node_color(n) == tm_GREY);
+  _tm_range_scan(tm_node_ptr(n), tm_node_ptr(n) + tm_node_type(n)->size);
 
-  /* Mark all possible pointers. */
-  {
-    const char *ptr = tm_node_to_ptr(n);
-    _tm_range_scan(ptr, ptr + b->type->size);
-  }
-}
+  /**
+   * If the node was fully scanned,
+   * Move the tm_GREY node to the marked (tm_BLACK) list.
+   */
+  tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
+
+#if 0
+  fprintf(stderr, "[B]");
+  fflush(stderr);
 #endif
+}
 
 
 /**
@@ -198,14 +214,6 @@ size_t _tm_node_scan_some(size_t amount)
     tm_node *n;
 
     /**
-     * If a node has been scheduled for scanning, skip it if it is no-longer black.
-     * This is a consequence of the write barrier trapping a mutation to a tm_BLACK node.
-     */
-    if ( gi->scan_node && ! tm_node_color(gi->scan_node) == tm_BLACK ) {
-      gi->scan_ptr = 0;
-    }
-
-    /**
      * If a there is a tm_node region to scan,
      */
     if ( gi->scan_ptr ) {
@@ -220,16 +228,24 @@ size_t _tm_node_scan_some(size_t amount)
 	++ count;
 	bytes += tm_PTR_ALIGN;
 
-	/* Stop scanning if the given amount has been scanned. */
+	/*! Stop scanning if the given amount has been scanned. */
 	if ( -- amount <= 0 ) {
 	  goto done;
 	}
       }
 
       /**
-       * If done done scanning the node entirely,
-       * reset scan pointers.
+       * If the node was fully scanned,
+       * Move the tm_GREY node to the marked (tm_BLACK) list.
        */
+      tm_node_set_color(gi->scan_node, tm_node_to_block(gi->scan_node), tm_BLACK);
+
+#if 0
+      fprintf(stderr, "B");
+      fflush(stderr);
+#endif
+
+      /*! Reset scan pointers. */
       gi->scan_node = 0;
       gi->scan_ptr = 0;
       gi->scan_end = 0;
@@ -241,16 +257,10 @@ size_t _tm_node_scan_some(size_t amount)
     if ( (n = tm_node_iterator_next(gi)) ) {
       tm_assert_test(tm_node_color(n) == tm_GREY);
 
-      /**
-       * Move the tm_GREY node to the marked (tm_BLACK) list,
-       * before scheduling it for scanning of interior pointers.
-       *
-       * This ensures if the node is mutated during
-       * interior pointer scanning,
-       * the node will be put back on
-       * the tm_GREY list by the write barrier.
-       */
-      tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
+#if 0
+      fprintf(stderr, "s");
+      fflush(stderr);
+#endif
 
       /**
        * Schedule the now BLACK node for interior pointer scanning.
