@@ -44,6 +44,11 @@ void *tm_alloc(size_t size)
   _tm_clear_some_stack_words();
   _tm_set_stack_ptr(&ptr);
 
+  if ( tm.trigger_full_gc ) {
+    tm.trigger_full_gc = 0;
+    _tm_gc_full_inner();
+  }
+
   ptr = _tm_alloc_inner(size);
 
 #if tm_TIME_STAT
