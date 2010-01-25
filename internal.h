@@ -1,10 +1,10 @@
 /** \file internal.h
  * \brief Internals.
+ *
+ * $Id: internal.h,v 1.17 2009-08-01 10:47:31 stephens Exp $
  */
 #ifndef _tredmill_INTERNAL_H
 #define _tredmill_INTERNAL_H
-
-/* $Id: internal.h,v 1.17 2009-08-01 10:47:31 stephens Exp $ */
 
 /****************************************************************************/
 
@@ -12,353 +12,18 @@
 #include <limits.h> /* PAGESIZE */
 #include <sys/time.h> /* struct timeval */
 #include <setjmp.h>
-#include "list.h"
 
+#include "tredmill/list.h"
+#include "tredmill/config.h"
+#include "tredmill/color.h"
 #include "tredmill/debug.h"
+#include "tredmill/node.h"
+#include "tredmill/block.h"
+#include "tredmill/type.h"
 #include "tredmill/stats.h"
 #include "tredmill/barrier.h"
 
 #include "util/bitset.h" /* bitset_t */
-
-/****************************************************************************/
-/*! \defgroup configuration Configuration */
-/*@{*/
-
-#ifndef PAGESIZE
-
-/*! The mininum size memory block in the OS. */
-#define PAGESIZE (1 << 13) /* 8192 */
-#endif
-
-#ifndef tm_PAGESIZE
-/*! The size of blocks allocated from the OS. */
-#define tm_PAGESIZE PAGESIZE
-#endif
-
-#ifndef tm_TIME_STAT
-#define tm_TIME_STAT 1 /*!< If true, enable timing stats. */
-#endif
-
-#ifndef tm_name_GUARD
-#define tm_name_GUARD 0 /*!< If true, enable name guards in internal structures. */
-#endif
-
-#ifndef tm_block_GUARD
-#define tm_block_GUARD 0 /*!< If true, enable data corruption guards in internal structures. */
-#endif
-
-
-/*@}*/
-
-/****************************************************************************/
-/*! \defgroup color Color */
-/*@{*/
-
-
-/**
- * The color of a node.
- *
- * Values greater than tm_BLACK are used as indicies
- * into accounting arrays.
- */
-typedef enum tm_color {
-  /*! Node colors */
-
-  /*! Free, in free list. */
-  tm_WHITE,
-  /*! Allocated. */
-  tm_ECRU,
-  /*! Marked in use, scheduled for interior scanning. */
-  tm_GREY,
-  /*! Marked in use, scanned. */
-  tm_BLACK,        
-
-  /*! Accounting */
-
-  /*! Total nodes of any color. */
-  tm_TOTAL,        
-  tm__LAST,
-
-  /*! Type-level Stats. */
-
-  /*! Total blocks in use. */
-  tm_B = tm__LAST,
-  /*! Total nodes in use. */ 
-  tm_NU,
-  /*! Total bytes in use. */
-  tm_b,
-  /*! Avg bytes/node. */
-  tm_b_NU,
-  tm__LAST2,
-
-  /*! Block-level Stats. */
-
-  /*! Blocks currently allocated from OS. */
-  tm_B_OS = tm__LAST2,
-  /*! Bytes currently allocated from OS. */ 
-  tm_b_OS,
-  /*! Peak blocks allocated from OS. */
-  tm_B_OS_M,
-  /*! Peak bytes allocated from OS. */
-  tm_b_OS_M,
-  tm__LAST3,
-
-  /*! Aliases for internal structure coloring. */
-
-  /*! Color of a free tm_block. */
-  tm_FREE_BLOCK = tm_WHITE,
-  /*! Color of a live, in-use tm_block. */
-  tm_LIVE_BLOCK = tm_ECRU,
-  /*! Color of a free tm_type. */
-  tm_FREE_TYPE  = tm_GREY,
-  /*! Color of a live, in-use tm_type. */
-  tm_LIVE_TYPE  = tm_BLACK
-
-} tm_color;
-
-
-/*@}*/
-
-/****************************************************************************/
-/*! \defgroup node Node */
-/*@{*/
-
-
-/**
- * An allocation node representing the data ptr returned from tm_alloc().
- *
- * The data ptr return by tm_alloc() from a tm_node is immediately after its tm_list header.
- *
- * tm_nodes are parceled from tm_blocks.
- * Each tm_node has a color, which places it on
- * a colored list for the tm_node's tm_type.
- *
- * A tm_node's tm_block is determined by the tm_node's address.
- *
- * A tm_node's tm_type is determined by the tm_block it resides in.
- *
- */
-typedef struct tm_node {
-  /*! The current type list for the node. */
-  /*! tm_type.color_list[tm_node_color(this)] list. */
-  tm_list list; 
-} tm_node;
-
-/*! The color of a tm_node. */
-#define tm_node_color(n) ((tm_color) tm_list_color(n))
-/*! A pointer to the data of a tm_node. */
-#define tm_node_ptr(n) ((void*)(((tm_node*) n) + 1))
-
-
-/*@}*/
-
-/****************************************************************************/
-/*! \defgroup block Block */
-/*@{*/
-
-/**
- * A block allocated from the operating system.
- *
- * tm_blocks are parceled into tm_nodes of uniform size
- * based on the size of the tm_block's tm_type.
- *
- * All tm_nodes parceled from a tm_block have the same
- * tm_type.
- *
- * A tm_block's address is always aligned to tm_block_SIZE.
- */
-typedef struct tm_block {
-  /*! tm_type.block list */
-  tm_list list;
-
-#if tm_block_GUARD
-  /*! Magic overwrite guard. */
-  unsigned long guard1;
-#define tm_block_hash(b) (0xe8a624c0 ^ (unsigned long)(b))
-#endif
-
-#if tm_name_GUARD
-  /*! Name used for debugging. */
-  const char *name;
-#endif
-
-  /*! Block's actual size (including this header), multiple of tm_block_SIZE. */
-  size_t size;         
-  /*! The type the block is assigned to.
-   *  All tm_nodes parceled from this block will be of type->size.
-   */ 
-  struct tm_type *type;
-  /*! The beginning of the allocation space. */
-  char *begin;
-
-  /*! The end of allocation space.  When alloc reaches end, the block is fully parceled. */
-  char *end;
-
-  /*! The next parcel pointer for new tm_nodes.  Starts at begin.  Nodes are parceled by incrementing this attribute. */
-  char *next_parcel;
-
-  /*! Number of nodes for this block, indexed by tm_color: includes tm_TOTAL. */
-  size_t n[tm__LAST];
-
-#if tm_block_GUARD
-  /*! Magic overwrite guard. */
-  unsigned long guard2;
-#endif
-
-  /*! Force alignment of tm_nodes to double. */
-  double alignment[0];
-} tm_block;
-
-/*! True if the tm_block has no used nodes; i.e. it can be returned to the OS. */
-#define tm_block_unused(b) ((b)->n[tm_WHITE] == b->n[tm_TOTAL])
-
-/*! The begining address of any tm_nodes parcelled from a tm_block. */
-#define tm_block_node_begin(b) ((void*) (b)->begin)
-
-/*! The end address of any tm_nodes parcelled from a tm_block. */
-#define tm_block_node_end(b) ((void*) (b)->end)
-
-/*! The address of the next tm_node to be parcelled from a tm_block. */
-#define tm_block_node_next_parcel(b) ((void*) (b)->next_parcel)
-
-/*! The total size of a tm_node with a useable size based on the tm_block's tm_type size. */
-#define tm_block_node_size(b) ((b)->type->size + tm_node_HDR_SIZE)
-
-/*! The adddress of the next tm_node after n, parcelled from tm_block. */
-#define tm_block_node_next(b, n) ((void*) (((char*) (n)) + tm_block_node_size(b)))
-
-#if tm_block_GUARD
-/*! Validates tm_block for data corruption. */
-#define _tm_block_validate(b) do { \
-   tm_assert_test(b); \
-   tm_assert_test((b)->size); \
-   tm_assert_test(! ((void*) &tm <= (void*) (b) && (void*) (b) < (void*) (&tm + 1))); \
-   tm_assert_test((b)->guard1 == tm_block_hash(b)); \
-   tm_assert_test((b)->guard2 == tm_block_hash(b)); \
-   tm_assert_test((b)->begin < (b)->end); \
-   tm_assert_test((b)->begin <= (b)->alloc && (b)->alloc <= (b)->end); \
-   tm_assert_test((b)->n[tm_WHITE] + (b)->n[tm_ECRU] + (b)->n[tm_GREY] + (b)->n[tm_BLACK] == (b)->n[tm_TOTAL]); \
-} while(0)
-#else
-#define _tm_block_validate(b) ((void) 0)
-#endif
-
-
-/*@}*/
-
-/****************************************************************************/
-/*! \defgroup type Type */
-/*@{*/
-
-/**
- * A tm_type represents information about all tm_nodes of a specific size.
- *
- * -# How many tm_nodes of a given color exists.
- * -# Lists of tm_nodes by color.
- * -# Lists of tm_blocks used to parcel tm_nodes.
- * -# The tm_block for initializing new nodes from.
- * -# A tm_adesc user-level descriptor.
- * .
- */
-typedef struct tm_type {
-  /*! All types list: tm.types */
-  tm_list list;
-
-  /*! The type id: tm.type_id */
-  int id;
-
-#if tm_name_GUARD
-  /*! A name for debugging. */
-  const char *name;
-#endif
-
-  /*! Hash table next ptr: tm.type_hash[]. */
-  struct tm_type *hash_next;  
-
-  /*! Size of each tm_node. */
-  size_t size;
-
-  /*! List of blocks allocated for this type. */                
-  tm_list blocks;     
-
-  /*! Number of nodes, indexed by tm_color: includes tm_TOTAL, tm_B, tm_NU, tm_b, tm_b_NU stats. */        
-  size_t n[tm__LAST2];
-
-  /*! Lists of node by color; see tm_node.list. */
-  tm_list color_list[tm_TOTAL];
-
-  /*! The current block we are parceling from. */ 
-  tm_block *parcel_from_block;
-
-  /*! User-specified descriptor handle. */ 
-  tm_adesc *desc;
-} tm_type;
-
-
-/**
- * Configuration constants.
- */
-enum tm_config {
-  /*! Nothing smaller than this is actually allocated. */
-  tm_ALLOC_ALIGN = 8, 
-
-  /*! Alignment of pointers. */
-  tm_PTR_ALIGN = __alignof(void*),
-
-  /*! Size of tm_node headers. */
-  tm_node_HDR_SIZE = sizeof(tm_node),
-  /*! Size of tm_block headers. */
-  tm_block_HDR_SIZE = sizeof(tm_block),
-
-  /*! Size of tm_block. Allocations from operating system are aligned to this size. */
-  tm_block_SIZE = tm_PAGESIZE,
-  /*! Operating system pages are aligned to this size. */
-  tm_page_SIZE = tm_PAGESIZE,
-
-  /*! The maxinum size tm_node that can be allocated from a single tm_block. */
-  tm_block_SIZE_MAX = tm_block_SIZE - tm_block_HDR_SIZE,
-
-  /*! The addressable range of process memory in 1024 blocks. */
-  tm_address_range_k = 1UL << (sizeof(void*) * 8 - 10),
-
-  /*! Huh? */
-  tm_block_N_MAX = sizeof(void*) / tm_block_SIZE,
-};
-
-
-/*! Mask to align tm_block pointers. */ 
-#define tm_block_SIZE_MASK ~(((unsigned long) tm_block_SIZE) - 1)
-
-/*! Mask to align page pointers. */ 
-#define tm_page_SIZE_MASK ~(((unsigned long) tm_page_SIZE) - 1)
-
-/****************************************************************************/
-
-/**
- * Colored Node Iterator.
- */
-typedef struct tm_node_iterator {
-  /*! The color of nodes to iterate on. */
-  int color;
-  /*! The next tm_node. */
-  tm_node *node_next;
-  /*! The current tm_type. */
-  tm_type *type;
-  /*! The current tm_node. */
-  tm_node *node;
-
-  /*! The node scheduled for interior scanning. */
-  void *scan_node;
-  /*! The current scanning position in the tm_node_ptr() data region. */
-  void *scan_ptr;
-  /*! End of scan region. */
-  void *scan_end;
-  /*! Size of scan region. */
-  size_t scan_size;
-} tm_node_iterator;
-
-
-/*@}*/
 
 /****************************************************************************/
 /*! \defgroup phase Phase */
@@ -445,6 +110,9 @@ struct tm_data {
   int sweeping;
   int unmarking;
 
+  /*! If true, full GC is triggered on next call to tm_alloc(). */
+  int trigger_full_gc;
+
   /*! Global node counts. */
   size_t n[tm__LAST3];
 
@@ -470,8 +138,13 @@ struct tm_data {
 
   /*! Blocks: */
 
-  tm_block *block_first; /* The first block allocated. */
-  tm_block *block_last;  /* The last block allocated. */
+  /*! The next block id. */
+  int block_id;
+
+  /*! The first block allocated. */
+  tm_block *block_first;
+  /*! The last block allocated. */
+  tm_block *block_last;
 
   /*! A list of free tm_blocks not returned to the OS. */
   tm_list free_blocks;
@@ -564,10 +237,16 @@ struct tm_data {
   tm_time_stat   ts_free;
   /*! Time spent in tm_gc_full().  */
   tm_time_stat   ts_gc;                  
-  /*! Time spent in tm_write_barrier*(). */
+  /*! Time spent in tm_gc_full_inner().  */
+  tm_time_stat   ts_gc_inner;                  
+  /*! Time spent in tm_write_barrier(). */
   tm_time_stat   ts_barrier;             
-  /*! Time spent in tm_write_barrier*() recoloring black nodes. */
-  tm_time_stat   ts_barrier_black;       
+  /*! Time spent in tm_write_barrier_root(). */
+  tm_time_stat   ts_barrier_root;       
+  /*! Time spent in tm_write_barrier_pure(). */
+  tm_time_stat   ts_barrier_pure;       
+  /*! Time spent in tm_write_barrier on tm_BLACK nodes. */
+  tm_time_stat   ts_barrier_black;
   /*! Time spent in each phase during tm_alloc().   */
   tm_time_stat   ts_phase[tm_phase_END]; 
     
@@ -575,8 +254,13 @@ struct tm_data {
 
   /*! Current allocation id. */
   size_t alloc_id;
+
   /*! Current allocation pass. */
   size_t alloc_pass;
+  
+  /*! Allocations since sweep. */
+  size_t alloc_since_sweep;
+
   /*! Current allocation request size. */
   size_t alloc_request_size;
   /*! Current allocation request type. */
@@ -653,7 +337,7 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
       ni->type = (void*) tm_list_next(ni->type);
 
       /*
-       * There are no tm_type at all.
+       * There are no tm_type objects at all.
        * This should never happen!
        */
       if ( (void *) ni->type == (void *) &tm.types ) {
@@ -672,7 +356,7 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
     }
 
     /* At end of type color list? */
-    if ( (void *) ni->node_next == (void *) &ni->type->color_list[ni->color] ) {
+    if ( ! ni->node_next || (void *) ni->node_next == (void *) &ni->type->color_list[ni->color] ) {
       ni->type = (void*) tm_list_next(ni->type);
       goto next_type;
     }
@@ -685,7 +369,7 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
 	      tm_color_name[tm_node_color(ni->node_next)],
 	      ni->type->id
 	      );
-      tm_abort();
+      // tm_abort();
       ni->type = (void*) tm_list_next(ni->type);
       goto next_type;
     }

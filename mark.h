@@ -88,6 +88,7 @@ void _tm_stack_scan();
 void _tm_root_scan_all();
 int _tm_root_scan_some();
 
+__inline
 void _tm_range_scan(const void *b, const void *e);
 
 size_t _tm_node_scan_some(size_t amount);

@@ -2,8 +2,8 @@
 
 MAKS=../maks
 
-OPTIMIZE=YES
-#OPTIMIZE=NO
+#OPTIMIZE=YES
+OPTIMIZE=NO
 
 INCLS += ..
 
@@ -78,5 +78,23 @@ doc/data_structure.dot : doc/data_structure.rb
 doc/data_structure.png : doc/data_structure.dot
 	dot -Tpng:cairo:cairo -o "$@" "$<"
 
+pub-docs: doc/html
+	rsync -ruzv doc/html/ kscom:kurtstephens.com/pub/tredmill/current/doc/html
+
 GARBAGE_DIRS += doc/latex
 
+#################################################################
+
+TESTS = test1 test2 test3 test4 test5 test6 test7 test8 test9
+test: all mak_gen/Linux/t/tmtest
+	for t in $(TESTS) ;\
+	do \
+	  mak_gen/Linux/t/tmtest $$t ;\
+	  gnuplot alloc_log.gp - ;\
+	done
+
+debug: all
+	gdb mak_gen/Linux/t/tmtest
+
+/tmp/tm_alloc.log : mak_gen/Linux/t/tmtest
+	- mak_gen/Linux/t/tmtest

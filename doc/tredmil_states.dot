@@ -1,0 +1,29 @@
+digraph "Node Color" {
+graph [
+#  rankdir = "LR"
+];
+node [
+  fontsize = "8"
+  shape = "ellipse"
+  style = "filled"
+];
+edge [
+];
+
+Unparceled [ label="Unparceled" fillcolor="white"    fontcolor="black"  style="dotted"  ]
+Free       [ label="Free"       fillcolor="white"    fontcolor="black"  ]
+Allocated  [ label="Allocated"  fillcolor="#C2B280"  fontcolor="black" ]
+Marked     [ label="Marked"     fillcolor="grey"     fontcolor="black" ]
+Scanned    [ label="Scanned"    fillcolor="black"    fontcolor="white" ]
+
+Unparceled -> Free   [ label="parcel"    color="black" ]
+Free -> Unparceled   [ label="unparcel"  color="black" ]
+Free -> Allocated    [ label="allocate"  color="black" ] 
+Allocated -> Marked  [ label="mark"      color="black" ]
+Marked -> Scanned    [ label="scan"      color="black" ]
+Scanned -> Marked    [ label="mutate"    color="black" ]
+Marked -> Allocated  [ label="unmark"    color="black" ]
+Allocated -> Free    [ label="sweep"     color="black" ]
+
+}
+
