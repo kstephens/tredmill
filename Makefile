@@ -67,7 +67,7 @@ $(O_FILES) : $(H_FILES)
 
 # Make this part of maks.
 doc/html : doc/html/index.html
-doc/html/index.html : Makefile $(C_FILES) $(H_FILES) doc/doxygen.conf doc/*.png doc/data_structure.png
+doc/html/index.html : Makefile $(C_FILES) $(H_FILES) doc/doxygen.conf doc/*.png doc/data_structure.png doc/tredmil_states.png
 	mkdir -p doc/html
 	cp -p doc/*.png doc/html/
 	doxygen doc/doxygen.conf 2>&1 | tee doc/doxygen.log
@@ -76,6 +76,9 @@ doc/data_structure.dot : doc/data_structure.rb
 	ruby "$<" "$@"
 
 doc/data_structure.png : doc/data_structure.dot
+	dot -Tpng:cairo:cairo -o "$@" "$<"
+
+doc/tredmil_states.png : doc/tredmil_states.dot
 	dot -Tpng:cairo:cairo -o "$@" "$<"
 
 pub-docs: doc/html

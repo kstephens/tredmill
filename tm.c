@@ -107,17 +107,26 @@ New tm_blocks may be requested from the operating system during all phases, if t
 The reasoning is the operating system should be able to allocate a new allocation block faster than a collection that would need to completely “stop the world”.
 
 All phases, except the tm_SWEEP phase, allocate nodes by moving them from the tm_WHITE list to the tm_ECRU list.
-The tm_SWEEP phase allocated nodes from tm_WHITE to tm_GREY, because tm_ECRU nodes are considered to be unmarked garbage during the tm_SWEEP phase and tm_BLACK nodes are considered “in-use’ but are not scanned for interior pointers during the tm_SWEEP phase.
-Using tm_GREY during tm_SWEEP is also related to tm_BLACK node mutation, which gives rise to requiring a write barrier on tm_BLACK nodes.
+The tm_SWEEP phase allocates nodes from tm_WHITE to tm_GREY, because tm_ECRU nodes are considered to be 
+unmarked garbage during the tm_SWEEP phase and tm_BLACK nodes are considered “in-use’ -- 
+tm_GREY nodes are not sweeped during the tm_SWEEP phase.
+Using tm_GREY during tm_SWEEP is also related to tm_BLACK node mutation, 
+which gives rise to requiring a write barrier on tm_BLACK nodes.
 
 The tm_SWEEP phase will always attempt to scan any tm_GREY nodes before continuing to sweep any tm_ECRU nodes.
 
-The tm_BLACK color might seem a better choice for tm_SWEEP allocations, but this would force young nodes, which are more likely to be garbage, to be kept until the next tm_SWEEP phase. 
+The tm_BLACK color might seem a better choice for tm_SWEEP allocations, 
+but this would force young nodes, which are more likely to be garbage, to be kept until the next tm_SWEEP phase. 
 Coloring tm_SWEEP allocations tm_BLACK would also prevent any new interior pointers stored in nodes that may reference tm_ECRU nodes from being scanned before tm_SWEEP is complete.
 
 If once tm_SWEEP is complete, tm_blocks with no active tm_nodes (i.e. b->n[tm_WHITE] == b->n[tm_TOTAL]) have all their tm_nodes unparcelled and the tm_block is returned to the operating system.
 
-To prevent thrashing the operating system with tm_block allocation and free requests, a limited number of unused blocks are kept on a global tm_block free list.
+The tm_SCAN phase may cause a full GC if its determined that the last remaining node to scan is being mutated.
+The tm_SCAN phase may also cause all tm_GREY nodes to be scanned during tm_malloc(), if memory pressure is high.
+The tm_SCAN phase always scans all roots if there are no tm_GREY nodes left, before continuing to the tm_SWEEP phase.
+
+To prevent thrashing the operating system with tm_block allocation and free requests, 
+a limited number of unused blocks are kept on a global tm_block free list.
 
 \subsection aligned_blocks Aligned Blocks
 

@@ -4,25 +4,31 @@ graph [
 ];
 node [
   fontsize = "8"
-  shape = "ellipse"
-  style = "filled"
+  shape = "box"
+  style = "filled,rounded"
 ];
 edge [
+  fontsize = "8"
 ];
 
-Unparceled [ label="Unparceled" fillcolor="white"    fontcolor="black"  style="dotted"  ]
-Free       [ label="Free"       fillcolor="white"    fontcolor="black"  ]
-Allocated  [ label="Allocated"  fillcolor="#C2B280"  fontcolor="black" ]
-Marked     [ label="Marked"     fillcolor="grey"     fontcolor="black" ]
-Scanned    [ label="Scanned"    fillcolor="black"    fontcolor="white" ]
+subgraph "clusterStates" {
 
-Unparceled -> Free   [ label="parcel"    color="black" ]
-Free -> Unparceled   [ label="unparcel"  color="black" ]
+Unparceled [ label="Unparceled\n(Colorless)\nNot Parceled from block" fillcolor="white"    fontcolor="black"  style="dotted,rounded"  ]
+Free       [ label="Free\nWHITE\nParceled and unused"       fillcolor="white"    fontcolor="black"  ]
+Allocated  [ label="Allocated\nECRU\nAllocated and may be unreferenced"  fillcolor="#C2B280"  fontcolor="black" ]
+Marked     [ label="Marked\nGREY\nRefrenced and not scanned for references"     fillcolor="grey"     fontcolor="black" ]
+Scanned    [ label="Scanned\nBLACK\nReferenced and scanned"    fillcolor="black"    fontcolor="white" ]
+
+}
+
+Unparceled -> Free   [ label="parcel"    color="black" style="dotted" ]
+Free -> Unparceled   [ label="unparcel"  color="black" style="dotted" ]
 Free -> Allocated    [ label="allocate"  color="black" ] 
+Free -> Marked       [ label="allocate\n during sweep" color="black" ]
 Allocated -> Marked  [ label="mark"      color="black" ]
-Marked -> Scanned    [ label="scan"      color="black" ]
+Marked -> Scanned    [ label="scan complete"   color="black" ]
 Scanned -> Marked    [ label="mutate"    color="black" ]
-Marked -> Allocated  [ label="unmark"    color="black" ]
+Scanned -> Allocated [ label="unmark"    color="black" ]
 Allocated -> Free    [ label="sweep"     color="black" ]
 
 }
