@@ -196,6 +196,7 @@ Recoloring and marking root set pages can be done in hardware assuming the overh
 - TM is not currently operational on 64-bit archtectures due to statically allocation block bit maps.
 - TM does not currently support allocations larger than a tm_block. This will be fixed by using another page-indexed bit vector. A “block-header-in-page” bit vector marks the page of each tm_block header. This bit vector will be scanned backwards to locate the first page that contains the allocation’s block header.
 - TM does not currently support requests for page-aligned allocations. This could be achieved by using a hash table to map page-aligned allocations to its tm_block.
+- TM does not "switch" the rolls of ECRU and BLACK after marking as list in Baker's paper.
 
 \subsection references References
 
@@ -246,19 +247,6 @@ should be during the current allocation phase.
  * to prevent accidental sweeping.
  */
 #define tm_SWEEP_ALLOC_COLOR tm_GREY
-
-
-static const tm_color tm_phase_alloc[] = {
-  tm_DEFAULT_ALLOC_COLOR,  /* tm_ALLOC */
-  tm_DEFAULT_ALLOC_COLOR,  /* tm_UNMARK */
-  tm_DEFAULT_ALLOC_COLOR,  /* tm_ROOT */
-  tm_DEFAULT_ALLOC_COLOR,  /* tm_SCAN */
-  tm_SWEEP_ALLOC_COLOR,    /* tm_SWEEP */
-  -1
-};
-
-#undef tm_DEFAULT_ALLOC_COLOR
-#undef tm_SWEEP_ALLOC_COLOR
 
 /*@}*/
 
@@ -321,6 +309,9 @@ void _tm_phase_init(int p)
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 0;
+
+    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
+
     break;
 
   case tm_UNMARK:
@@ -332,6 +323,8 @@ void _tm_phase_init(int p)
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 0;
+
+    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
 
     /*! Set up for unmarking. */
     tm_node_LOOP_INIT(tm_BLACK);
@@ -350,6 +343,8 @@ void _tm_phase_init(int p)
     tm.scanning = 0;
     tm.sweeping = 0;
 
+    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
+
     /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
 
@@ -367,6 +362,8 @@ void _tm_phase_init(int p)
     tm.scanning = 1;
     tm.sweeping = 0;
 
+    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
+
     /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
 
@@ -383,6 +380,8 @@ void _tm_phase_init(int p)
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 1;
+
+    _tm_alloc_color = tm_SWEEP_ALLOC_COLOR;
 
     tm_assert_test(tm.n[tm_GREY] == 0);
 
@@ -441,7 +440,7 @@ void _tm_node_set_color(tm_node *n, tm_block *b, tm_type *t, tm_color c)
 
   tm_assert_test(b);
   tm_assert_test(t);
-  tm_assert_test(c <= tm_BLACK);
+  tm_assert_test(c < tm_TOTAL);
 
   /*! Increment cumulative global stats. */
   ++ tm.alloc_n[c];
@@ -1788,7 +1787,7 @@ void *_tm_type_alloc_node_from_free_list(tm_type *t)
   memset(ptr, 0, t->size);
   
   /*! Put the tm_node on the appropriate allocated list, depending on the tm.phase. */
-  tm_node_set_color(n, tm_node_to_block(n), tm_phase_alloc[tm.phase]);
+  tm_node_set_color(n, tm_node_to_block(n), _tm_alloc_color);
   
   /*! Mark the tm_node's page as used. */
   _tm_page_mark_used(ptr);

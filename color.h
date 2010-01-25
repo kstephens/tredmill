@@ -24,11 +24,11 @@ typedef enum tm_color {
   /*! Free, in free list. */
   tm_WHITE,
   /*! Allocated. */
-  tm_ECRU,
+  tm_ECRU_,
   /*! Marked in use, scheduled for interior scanning. */
   tm_GREY,
   /*! Marked in use, scanned. */
-  tm_BLACK,        
+  tm_BLACK_,        
 
   /*! Accounting */
 
@@ -64,16 +64,22 @@ typedef enum tm_color {
   /*! Aliases for internal structure coloring. */
 
   /*! Color of a free tm_block. */
-  tm_FREE_BLOCK = tm_WHITE,
+  tm_FREE_BLOCK = 0,
   /*! Color of a live, in-use tm_block. */
-  tm_LIVE_BLOCK = tm_ECRU,
+  tm_LIVE_BLOCK,
   /*! Color of a free tm_type. */
-  tm_FREE_TYPE  = tm_GREY,
+  tm_FREE_TYPE,
   /*! Color of a live, in-use tm_type. */
-  tm_LIVE_TYPE  = tm_BLACK
+  tm_LIVE_TYPE,
+  tm__LAST4,
 
 } tm_color;
 
+
+extern int _tm_ECRU, _tm_BLACK, _tm_alloc_color;
+
+#define tm_ECRU _tm_ECRU
+#define tm_BLACK _tm_BLACK
 
 /*@}*/
 

@@ -40,15 +40,9 @@ void (*_tm_write_barrier)(void *referent) = __tm_write_barrier_ignore;
 static __inline
 void tm_write_barrier_node(tm_node *n)
 {
-  switch ( tm_node_color(n) ) {
-  case tm_ECRU:
-    /**
-     * If node is tm_ECRU,
-     * It has not been reached yet.
-     */
-    break;
+  int c = tm_node_color(n);
 
-  case tm_GREY:
+  if ( c == tm_GREY ) {
     /**
      * If node is tm_GREY,
      * it is already marked for scanning.
@@ -63,16 +57,13 @@ void tm_write_barrier_node(tm_node *n)
      * See _tm_node_scan_some().
      */
     if ( tm.node_color_iter[tm_GREY].scan_node == n ) {
-      // tm_abort();
 #if 0
       fprintf(stderr, "*");
       fflush(stderr);
 #endif
       tm.trigger_full_gc = 1;
     }
-    break;
-
-  case tm_BLACK:
+  } else if ( c == tm_BLACK ) {
     /**
      * If node is tm_BLACK,
      * The node has already been marked and scanned.
@@ -98,12 +89,12 @@ void tm_write_barrier_node(tm_node *n)
 #if 0
     tm_msg("w b n%p\n", n);
 #endif
-    break;
-
-  default:
-    tm_abort();
-    break;
   }
+
+  /**
+   * If node is tm_ECRU or tm_WHITE,
+   * It has not been reached yet.
+   */
 }
 
 

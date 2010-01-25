@@ -15,48 +15,29 @@
 static __inline
 int _tm_node_mark(tm_node *n)
 {
-  switch ( tm_node_color(n) ) {
-  case tm_WHITE:
+  int c = tm_node_color(n);
+
+  if ( c == tm_ECRU ) {
+    /**
+     * If tm_ECRU,
+     * the node has not been scheduled for marking;
+     * Schedule it for marking.
+     * Return true to alert caller that work is to be done.
+     */
+    tm_node_set_color(n, tm_node_to_block(n), tm_GREY);
+    return 1;
+  } else if ( c == tm_WHITE ) {
     /** If tm_WHITE, we have a spurious pointer into a free node?
      * ABORT!
      */
     tm_abort();
-    break;
-
-  case tm_ECRU:
-    /**
-     * If tm_ECRU,
-     * the node has not been scheduled for marking;
-     * So schedule it for marking.
-     * Return true to alert caller that work is to be done.
-     */
-    tm_node_set_color(n, tm_node_to_block(n), tm_GREY);
-#if 0
-    tm_msg("m n%p\n", n);
-#endif
-    return 1;
-    break;
-    
-  case tm_GREY:
-    /**
-     * If tm_GREY,
-     * the node has already been scheduled for marking.
-     * DO NOTHING.
-     */
-    break;
-    
-  case tm_BLACK:
-    /**
-     * If tm_BLACK,
-     * the node has already been marked.
-     * DO NOTHING.
-     */
-    break;
-
-  default:
-    tm_abort();
-    break;
   }
+
+  /**
+   * If tm_BLACK or tm_GREY
+   * the node has already been marked.
+   * DO NOTHING.
+   */
 
   /*! Otherwise, return false: there is nothing to do. */
   return 0;

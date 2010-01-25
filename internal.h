@@ -93,8 +93,13 @@ struct tm_data {
   /*! Current status. */
   int inited, initing;
 
+  int ECRU, BLACK; /* tm_ECRU, tm_BLACK */
+
   /*! The current processing phase. */
   enum tm_phase phase, next_phase;
+
+  /*! The color of newly allocated nodes. */
+  int alloc_color;
 
   /*! Number of transitions from one phase to another. */
   size_t n_phase_transitions[tm_phase_END + 1][tm_phase_END + 1];
