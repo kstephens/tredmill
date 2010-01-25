@@ -8,9 +8,16 @@
 /*@{*/
 
 /**
+ * Write barrier hook for a "pure pointer".
+ * A "pure pointer" must point to beginning of tm_alloc()'ed address.
+ * A pure pointer should never be 0.
+ */
+void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_ignore;
+
+/**
  * Write barrier hook for pointer into stack or data segment.
  */
-void (*_tm_write_barrier_root)(void *referent) = __tm_write_barrier_root_ignore;
+void (*_tm_write_barrier_root)(void *referent) = __tm_write_barrier_ignore;
 
 /**
  * Write barrier hook for unknown pointer.
@@ -19,82 +26,12 @@ void (*_tm_write_barrier_root)(void *referent) = __tm_write_barrier_root_ignore;
  */
 void (*_tm_write_barrier)(void *referent) = __tm_write_barrier_ignore;
 
-/**
- * Write barrier hook for a "pure pointer".
- * A "pure pointer" must point to beginning of tm_alloc()'ed address.
- * A pure pointer should never be 0.
- */
-void (*_tm_write_barrier_pure)(void *referent) = __tm_write_barrier_pure_ignore;
-
 /*@}*/
+
 
 /*******************************************************************************/
 /*! \defgroup write_barrier_function Write Barrier: Function */
 /*@{*/
-
-/**
- * Marks a possible pointer.
- *
- * tm_root_write() should be called after modifing a root ptr.
- */
-void tm_mark(void *ptr)
-{
-  _tm_mark_possible_ptr(ptr);
-}
-
-/**
- * ???
- */
-void __tm_write_barrier_root_ignore(void *referent)
-{
-  tm_abort();
-  /* DO NOTHING */
-}
-
-/**
- * ???
- */
-void __tm_write_barrier_root_ROOT(void *referent)
-{
-  tm_abort();
-  tm_mark(* (void**) referent);
-#if 0
-  tm_msg("w r p%p\n", referent);
-#endif
-}
-
-
-/**
- * ???
- */
-void __tm_write_barrier_root_SCAN(void *referent)
-{
-  tm_abort();
-  tm_mark(* (void**) referent);
-#if 0
-  tm_msg("w r p%p\n", referent);
-#endif
-}
-
-
-/**
- * ???
- */
-void __tm_write_barrier_root_SWEEP(void *referent)
-{
-  tm_abort();
-#if 0
-  tm_msg("w r p%p\n", referent);
-#endif
-}
-
-
-/*@}*/
-
-/*******************************************************************************/
-/*! \defgroup write_barrier_general  Write Barrier: General */
-/*@{*/
-
 
 /**
  * Must be called after any ptrs
@@ -104,6 +41,13 @@ static __inline
 void tm_write_barrier_node(tm_node *n)
 {
   switch ( tm_node_color(n) ) {
+  case tm_ECRU:
+    /**
+     * If node is tm_ECRU,
+     * It has not been reached yet.
+     */
+    break;
+
   case tm_GREY:
     /**
      * If node is tm_GREY,
@@ -111,24 +55,21 @@ void tm_write_barrier_node(tm_node *n)
      */
 
     /**
-     * BUG?: What if a tm_GREY node is partially scanned already?
+     * If this node is already being scanned,
+     * resume scanning on another node.
      *
-     * This should never happen, because tm_GREY nodes are colored
-     * tm_BLACK once they are scheduled for scanning in
-     * _tm_node_scan_some().
+     * This should be very rare.
+     *
+     * See _tm_node_scan_some().
      */
-    if (
-	tm.node_color_iter[tm_GREY].scan_node == n
-	) {
-      tm_abort();
+    if ( tm.node_color_iter[tm_GREY].scan_node == n ) {
+      // tm_abort();
+#if 0
+      fprintf(stderr, "*");
+      fflush(stderr);
+#endif
+      tm.trigger_full_gc = 1;
     }
-    break;
-
-  case tm_ECRU:
-    /**
-     * If node is tm_ECRU,
-     * It has not been reached yet.
-     */
     break;
 
   case tm_BLACK:
@@ -146,6 +87,11 @@ void tm_write_barrier_node(tm_node *n)
 
     tm_node_set_color(n, tm_node_to_block(n), tm_GREY);
 
+#if 0
+    fprintf(stderr, "G");
+    fflush(stderr);
+#endif
+
 #if tm_TIME_STAT
     tm_time_stat_end(&tm.ts_barrier_black);
 #endif
@@ -160,6 +106,7 @@ void tm_write_barrier_node(tm_node *n)
   }
 }
 
+
 /**
  * Write barrier for nothing.
  *
@@ -169,19 +116,51 @@ void __tm_write_barrier_ignore(void *ptr)
 {
 }
 
+/*@}*/
 
-#define RETURN goto _return
+/*******************************************************************************/
+/*! \defgroup write_barrier_pure  Write Barrier: Pure */
+/*@{*/
 
 /**
- * Write barrier during tm_ROOT phase.
- *
- * Don't know if this root has been marked yet or not.
+ * Write barrier for pure pointers during tm_SCAN.
  */
-void __tm_write_barrier_ROOT(void *ptr)
+void __tm_write_barrier_pure(void *ptr)
 {
   /*! Begin time stats. */
 #if tm_TIME_STAT
-  tm_time_stat_begin(&tm.ts_barrier);
+  tm_time_stat_begin(&tm.ts_barrier_pure);
+#endif
+
+  tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
+
+  /*! End time stats. */
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_barrier_pure);
+#endif
+}
+
+
+/*@}*/
+
+
+#define RETURN goto _return
+
+/*******************************************************************************/
+/*! \defgroup write_barrier_root  Write Barrier: Root */
+/*@{*/
+
+
+/**
+ * Write barrier for root or stack pointers.
+ *
+ * Don't know if this root has been marked yet or not.
+ */
+void __tm_write_barrier_root(void *ptr)
+{
+  /*! Begin time stats. */
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_barrier_root);
 #endif
 
   /**
@@ -224,15 +203,24 @@ void __tm_write_barrier_ROOT(void *ptr)
 
   /*! End time stats. */
 #if tm_TIME_STAT
-  tm_time_stat_end(&tm.ts_barrier);
+  tm_time_stat_end(&tm.ts_barrier_root);
 #endif
 }
 
 
+/*@}*/
+
+
+
+/*******************************************************************************/
+/*! \defgroup write_barrier_general  Write Barrier: General */
+/*@{*/
+
+
 /**
- * Write barrier during tm_SCAN phase.
+ * Write barrier for general references.
  */
-void __tm_write_barrier_SCAN(void *ptr)
+void __tm_write_barrier(void *ptr)
 {
   tm_node *n;
 
@@ -240,8 +228,6 @@ void __tm_write_barrier_SCAN(void *ptr)
 #if tm_TIME_STAT
   tm_time_stat_begin(&tm.ts_barrier);
 #endif
-
-  tm_assert_test(tm.phase == tm_SCAN);
 
   /**
    * If the ptr is a reference to a stack allocated object,
@@ -283,105 +269,5 @@ void __tm_write_barrier_SCAN(void *ptr)
 }
 
 
-/**
- * Write barrier during tm_SWEEP phase.
- */
-void __tm_write_barrier_SWEEP(void *ptr)
-{
-  tm_node *n;
-
-  /*! Begin time stats. */
-#if tm_TIME_STAT
-  tm_time_stat_begin(&tm.ts_barrier);
-#endif
-
-  /*! Assert we are in the tm_SWEEP phase. */
-  tm_assert_test(tm.phase == tm_SWEEP);
-
-  /**
-   * If the ptr is a reference to a stack allocated object,
-   * do nothing, because the stack will be marked before
-   * the sweep phase.
-   */
-  if ( (void*) &ptr <= ptr && ptr <= tm.roots[1].h ) {
-    ++ tm.stack_mutations;
-    // tm_msg("w s p%p\n", ptr);
-    RETURN;
-  }
-
-  /**
-   * Otherwise,
-   * if the ptr is a reference to a node,
-   * schedule it for remarking if it has already been marked.
-   *
-   * If it is not a reference to a node,
-   * it must be a reference to a statically allocated object.
-   * This means the data root set has (probably) been mutated.
-   * Flag the roots for remarking before the sweep phase.
-   *
-   */
-  if ( (n = tm_ptr_to_node(ptr)) ) {
-    tm_write_barrier_node(n);
-  } else {
-    ++ tm.data_mutations;
-#if 0
-    tm_msg("w r p%p\n", ptr);
-#endif
-  }
-
- _return:
-  (void) 0;
-
-  /*! End time stats. */
-#if tm_TIME_STAT
-  tm_time_stat_end(&tm.ts_barrier);
-#endif
-}
-
-#undef RETURN
-
 /*@}*/
-
-/*******************************************************************************/
-/*! \defgroup write_barrier_phase  Write Barrier: Phase */
-/*@{*/
-
-/**
- * Write barrier for pure pointers ignored.
- *
- * DO NOTHING
- */
-void __tm_write_barrier_pure_ignore(void *ptr)
-{
-}
-
-/**
- * Write barrier for pure pointers during tm_ROOT.
- *
- * DO NOTHING
- */
-void __tm_write_barrier_pure_ROOT(void *ptr)
-{
-}
-
-
-/**
- * Write barrier for pure pointers during tm_SCAN.
- */
-void __tm_write_barrier_pure_SCAN(void *ptr)
-{
-  tm_assert_test(tm.phase == tm_SCAN);
-  tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
-}
-
-
-/**
- * Write barrier for pure pointers during tm_SWEEP.
- */
-void __tm_write_barrier_pure_SWEEP(void *ptr)
-{
-  tm_assert_test(tm.phase == tm_SWEEP);
-  tm_write_barrier_node(tm_pure_ptr_to_node(ptr));
-}
-
 

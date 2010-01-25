@@ -16,7 +16,7 @@
 long tm_node_parcel_some_size = 8;
 
 /*! Words to scan per tm_alloc(). */
-long tm_node_scan_some_size = 96 * 2; 
+long tm_node_scan_some_size = 32 * 2; 
 
 /*! Nodes to sweep per tm_alloc(). */
 long tm_node_sweep_some_size = 8;
@@ -86,7 +86,10 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm.ts_alloc.name = "tm_alloc";
   tm.ts_free.name = "tm_free";
   tm.ts_gc.name = "gc";
+  tm.ts_gc_inner.name = "gc_inner";
   tm.ts_barrier.name = "tm_barrier";
+  tm.ts_barrier_pure.name = "tm_barrier_p";
+  tm.ts_barrier_root.name = "tm_barrier_r";
   tm.ts_barrier_black.name = "tm_barrier B";
 
   for ( i = 0; i < (sizeof(tm.ts_phase) / sizeof(tm.ts_phase[0])); ++ i ) {
@@ -319,7 +322,12 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   /*! Initialize phase: start by unmarking. */
   _tm_phase_init(tm_UNMARK);
-
+  
+  /*! Set up write barrier hooks. */
+  _tm_write_barrier = __tm_write_barrier;
+  _tm_write_barrier_pure = __tm_write_barrier_pure;
+  _tm_write_barrier_root = __tm_write_barrier_root;
+  
   /*! Mark system as initialized. */
   -- tm.initing;
   ++ tm.inited;
