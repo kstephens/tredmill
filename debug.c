@@ -59,7 +59,9 @@ const char *tm_msg_prefix = "";
 /*! Default messaages to enable. */
 const char *tm_msg_enable_default = 
 // "sNpwtFWVAg*r"
-   "gFWA"
+// "gFWA"
+// "FWA"
+   "FW"
 //  "gTFWA"
 // "RgTFWA"
 ;
