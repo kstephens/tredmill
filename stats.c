@@ -213,14 +213,15 @@ void tm_print_block_stats()
 
   tm_msg_enable("X", 1);
 
-  tm_msg("X { b tb%lu[%lu]\n",
+  tm_msg("X { b tb%lu[%lu] block_id %d\n",
 	 tm.n[tm_B],
-	 tm.n[tm_B] * tm_block_SIZE
+	 tm.n[tm_B] * tm_block_SIZE,
+	 tm.block_id
 	 );
 
   tm_list_LOOP(&tm.types, t);
   {
-    tm_msg("X   t%p s%lu \n", t, (unsigned long) t->size);
+    tm_msg("X   t#%d @%p s%lu \n", t->id, (void*) t, (unsigned long) t->size);
     
     tm_list_LOOP(&t->blocks, b);
     {
@@ -228,12 +229,22 @@ void tm_print_block_stats()
 
       _tm_block_validate(b);
 
-      tm_msg("X     b%p s%lu ", (void*) b, (unsigned long) b->size);
+      tm_msg("X     b#%d @%p s%lu ", (int) b->id, (void*) b, (unsigned long) b->size);
 
       for ( j = 0; j < sizeof(b->n)/sizeof(b->n[0]); j ++ ) {
 	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[j]);
       }
       
+      /* Parcel utilization. */
+      tm_msg1("T/b%3d%% ", 
+	      (int) ((b->n[tm_TOTAL] * 100) / b->n[tm_CAPACITY])
+	);
+
+      /* Compute block utilization. */
+      tm_msg1("(T-W)/b%3d%% ", 
+	      (int) (((b->n[tm_TOTAL] - b->n[tm_WHITE]) * 100) / b->n[tm_CAPACITY])
+	      );
+	      
       tm_msg1("\n");
     }
     tm_list_LOOP_END;
@@ -395,6 +406,8 @@ void tm_print_time_stats()
   tm_time_stat_print_(&tm.ts_free, ~0, 0);
   tm_time_stat_print_(&tm.ts_gc, ~0, 0);
   tm_time_stat_print_(&tm.ts_barrier, ~0, 0);
+  tm_time_stat_print_(&tm.ts_barrier_pure, ~0, 0);
+  tm_time_stat_print_(&tm.ts_barrier_root, ~0, 0);
   tm_time_stat_print_(&tm.ts_barrier_black, ~0, 0);
 
   for ( i = 0; 
