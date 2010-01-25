@@ -81,8 +81,14 @@ static void *my_alloc(size_t size)
 }
 
 
+static const char *selected_test_name = 0;
+
 static void _run_test(const char *name, void (*func)())
 {
+  if ( selected_test_name && strcmp(selected_test_name, name) != 0 ) {
+    return;
+  }
+
   tm_msg_prefix = name;
   _run_name = name;
   tm_msg(_run_sep);
@@ -429,8 +435,52 @@ static void test7()
 #endif
 
 
-#if 1
+/* Single array with randomized references. */
 static void test8()
+{
+  int n = 1000;
+  int i, j;
+  my_cons **root = 0;
+
+  _tm_sweep_is_error = 0;
+  tm_gc_full();
+
+  root = tm_alloc(sizeof(root[0]) * n);
+
+  for ( j = 0; j < 1000; j ++ ) {
+    for ( i = 0; i < nalloc; i ++ ) {
+      my_cons *c = my_cons_(0, 48);
+      int k = i + j;
+      k %= n;
+
+      root[k] = c;
+      tm_write_barrier_pure(root);
+    }
+#if 0
+    tm_gc_full();
+    tm_assert(tm.n[tm_TOTAL] - tm.n[tm_WHITE] <= n + 1);
+#endif
+  }
+  for ( j = 0; j < n; j ++ ) {
+    root[j] = 0;
+    tm_write_barrier_pure(root);
+
+    root[j + 1] = my_cons_(0, 48);
+    tm_write_barrier_pure(root);
+  }
+
+  end_test();
+
+  root = 0;
+  tm_write_barrier(&root);
+
+  tm_gc_full();
+  tm_assert(tm.n[tm_TOTAL] - tm.n[tm_WHITE] == 0);
+}
+
+
+#if 1
+static void test9()
 {
   int i;
   my_cons *root = 0, *roots[20];
@@ -482,6 +532,10 @@ static void test8()
 
 int main(int argc, char **argv, char **envp)
 {
+  int argi = 1;
+
+  selected_test_name = argi < argc ? argv[argi ++] : 0;
+
   fprintf(stderr, "%s: running\n", argv[0]);
 
   tm_os_alloc_max = 32 * 1024 * 1024;
@@ -505,9 +559,10 @@ int main(int argc, char **argv, char **envp)
   run_test(test6);
   run_test(test7);
   run_test(test8);
-
+  run_test(test9);
 
   tm_msg_prefix = "FINISHED";
+  tm_print_stats();
   tm_gc_full();
   tm_print_stats();
 
