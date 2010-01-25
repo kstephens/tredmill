@@ -208,6 +208,9 @@ void tm_validate_lists();
 
 /*@}*/
 
+static 
+tm_block *_tm_block_alloc_from_free_list(size_t size);
+
 /**************************************************************************/
 /*! \defgroup color Color */
 /*@{*/
@@ -217,32 +220,24 @@ This table defines what color a newly allocated node
 should be during the current allocation phase.
 */
 
-#if 1
 /**
  * Default allocated nodes to "not marked".
+ *
  * Rational: some are allocated but thrown away early.
  */
 #define tm_DEFAULT_ALLOC_COLOR tm_ECRU
-#else
-/**
- * Default allocated nodes to "scheduled, not marked".
- * Rational: they are allocated because they are to be used (referred to).
- * This seems to cause it to keep allocating new pages before sweeping.
- */
-#define tm_DEFAULT_ALLOC_COLOR tm_GREY
-#endif
 
-
-#if 1
 /**
  * Default allocated node color during sweep.
- * Rational: Assume that nodes are in-use and may contain pointers 
+ *
+ * Rational: 
+ * tm_ECRU is considered garabage during tm_SWEEP.
+ *
+ * Assume that new nodes are actually in-use and may contain pointers 
  * to prevent accidental sweeping.
  */
 #define tm_SWEEP_ALLOC_COLOR tm_GREY
-#else
-#define tm_SWEEP_ALLOC_COLOR tm_BLACK
-#endif
+
 
 static const tm_color tm_phase_alloc[] = {
   tm_DEFAULT_ALLOC_COLOR,  /* tm_ALLOC */
@@ -254,7 +249,7 @@ static const tm_color tm_phase_alloc[] = {
 };
 
 #undef tm_DEFAULT_ALLOC_COLOR
-
+#undef tm_SWEEP_ALLOC_COLOR
 
 /*@}*/
 
@@ -293,21 +288,30 @@ void _tm_phase_init(int p)
   ++ tm.n_phase_transitions[tm_phase_END][p];
   ++ tm.n_phase_transitions[tm_phase_END][tm_phase_END];
 
+  if ( tm.phase == tm_SWEEP && tm.phase != p ) {
+    tm.alloc_since_sweep = 0;
+  }
+
+#if 0
+  fprintf(stderr, "\n%s->%s #%lu %lu %lu %lu %lu\n", tm_phase_name[tm.phase], tm_phase_name[p], (unsigned long) tm.alloc_id,
+	  (unsigned long) tm.n[tm_WHITE],
+	  (unsigned long) tm.n[tm_ECRU],
+	  (unsigned long) tm.n[tm_GREY],
+	  (unsigned long) tm.n[tm_BLACK],
+	  0
+	  );
+#endif
+
   switch ( (tm.phase = p) ) {
   case tm_ALLOC:
     /**
      * - tm_ALLOC: allocate nodes until memory pressure is high.
      */
     tm.allocating = 1;
+    tm.unmarking = 0;
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 0;
-    tm.unmarking = 0;
-
-    /*! Set up write barrier hooks. */
-    _tm_write_barrier_root = __tm_write_barrier_root_ignore;
-    _tm_write_barrier = __tm_write_barrier_ignore;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   case tm_UNMARK:
@@ -315,21 +319,16 @@ void _tm_phase_init(int p)
      * - tm_UNMARK: begin unmarking tm_BLACK nodes as tm_ECRU:
      */
     tm.allocating = 0;
+    tm.unmarking = 1;
     tm.marking = 0;
     tm.scanning = 0;
     tm.sweeping = 0;
-    tm.unmarking = 1;
 
     /*! Set up for unmarking. */
-    // tm_node_LOOP_INIT(tm_BLACK);
+    tm_node_LOOP_INIT(tm_BLACK);
 
     /*! Keep track of how many tm_BLACK nodes are in use. */
     tm.n[tm_NU] = tm.n[tm_BLACK];
-
-    /*! Set up write barrier hooks. */
-    _tm_write_barrier_root = __tm_write_barrier_root_ignore;
-    _tm_write_barrier = __tm_write_barrier_ignore;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_ignore;
     break;
 
   case tm_ROOT:
@@ -337,21 +336,16 @@ void _tm_phase_init(int p)
      * - tm_ROOT: begin scanning roots for potential pointers:
      */
     tm.allocating = 0;
+    tm.unmarking = 0;
     tm.marking = 1;
     tm.scanning = 0;
     tm.sweeping = 0;
-    tm.unmarking = 0;
 
     /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
 
     /*! Initialize root mark loop. */
     _tm_root_loop_init();
-
-    /*! Set up write barrier hooks. */
-    _tm_write_barrier_root = __tm_write_barrier_root_ROOT;
-    _tm_write_barrier = __tm_write_barrier_ROOT;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_ROOT;
     break;
 
   case tm_SCAN:
@@ -359,21 +353,16 @@ void _tm_phase_init(int p)
      * - tm_SCAN: begin scanning tm_GREY nodes for internal pointers:
      */
     tm.allocating = 0;
+    tm.unmarking = 0;
     tm.marking = 1;
     tm.scanning = 1;
     tm.sweeping = 0;
-    tm.unmarking = 0;
 
     /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
 
     /*! Set up for marking. */
-    // tm_node_LOOP_INIT(tm_GREY);
-
-    /*! Set up write barrier hooks. */
-    _tm_write_barrier_root = __tm_write_barrier_root_SCAN;
-    _tm_write_barrier = __tm_write_barrier_SCAN;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_SCAN;
+    tm_node_LOOP_INIT(tm_GREY);
     break;
 
   case tm_SWEEP:
@@ -381,10 +370,10 @@ void _tm_phase_init(int p)
      * - tm_SWEEP: begin reclaiming any ECRU nodes as WHITE.
      */
     tm.allocating = 0;
-    tm.marking = 1;
-    tm.scanning = 1;
-    tm.sweeping = 1;
     tm.unmarking = 0;
+    tm.marking = 0;
+    tm.scanning = 0;
+    tm.sweeping = 1;
 
     tm_assert_test(tm.n[tm_GREY] == 0);
 
@@ -393,12 +382,6 @@ void _tm_phase_init(int p)
 
     /* Set up for sweeping. */
     // tm_node_LOOP_INIT(tm_ECRU);
-
-    /*! Set up write barrier hooks: */
-    /*! Recolor mutated BLACK nodes to GREY for rescanning. */
-    _tm_write_barrier_root = __tm_write_barrier_root_SWEEP;
-    _tm_write_barrier = __tm_write_barrier_SWEEP;
-    _tm_write_barrier_pure = __tm_write_barrier_pure_SWEEP;
     break;
 
   default:
@@ -530,6 +513,14 @@ void _tm_type_add_block(tm_type *t, tm_block *b)
   /*! Associate tm_block with the tm_type. */
   b->type = t;
 
+  /*! Compute the capacity of this block. */
+  tm_assert_test(! b->n[tm_CAPACITY]);
+  b->n[tm_CAPACITY] = (b->end - b->begin) / (sizeof(tm_node) + t->size); 
+
+  /*! Begin parceling from this block. */
+  tm_assert_test(! t->parcel_from_block);
+  t->parcel_from_block = b;
+
   /*! Increment type block stats. */
   ++ t->n[tm_B];
 
@@ -580,6 +571,11 @@ void tm_block_init(tm_block *b)
 {
   tm_assert_test(b->size);
 
+  /*! Initialize the block id. */
+  if ( ! b->id ) {
+    b->id = ++ tm.block_id;
+  }
+
   /*! Initialize tm_block list pointers. */
   tm_list_init(&b->list);
   /*! Mark tm_block as tm_LIVE_BLOCK. */
@@ -623,17 +619,32 @@ void tm_block_init(tm_block *b)
 
 
 /**
- * Allocate a tm_block of a given size.
+ * Align size to a multiple of tm_block_SIZE.
  */
-static
-tm_block *_tm_block_alloc(size_t size)
+static __inline
+size_t tm_block_align_size(size_t size)
 {
-  tm_block *b = 0;
   size_t offset;
 
   /*! Force allocation to a multiple of tm_block_SIZE. */
   if ( (offset = (size % tm_block_SIZE)) )
     size += tm_block_SIZE - offset;
+
+  return size;
+}
+
+
+/**
+ * Allocate a tm_block from the free list.
+ * 
+ * Force allocation to a multiple of tm_block_SIZE.
+ */
+static
+tm_block *_tm_block_alloc_from_free_list(size_t size)
+{
+  tm_block *b = 0;
+
+  size = tm_block_align_size(size);
 
   /*! Scan global tm_block free list for a block of the right size. */
   {
@@ -657,6 +668,32 @@ tm_block *_tm_block_alloc(size_t size)
     }
     tm_list_LOOP_END;
   }
+  
+  if ( b ) {
+    /*! Initialize the tm_block. */
+    tm_block_init(b);
+    
+    /*! Increment global block stats. */
+    ++ tm.n[tm_B];
+    tm.blocks_allocated_since_gc += size / tm_block_SIZE;
+  }
+
+  /*! Return 0 if no free blocks exist. */
+  return b;
+}
+
+/**
+ * Allocate a tm_block of a given size.
+ */
+static
+tm_block *_tm_block_alloc(size_t size)
+{
+  tm_block *b;
+
+  size = tm_block_align_size(size);
+
+  /*! Try to allocate from block free list. */
+  b = _tm_block_alloc_from_free_list(size);
 
   /** 
    * Otherwise, allocate a new tm_block from the OS.
@@ -664,6 +701,13 @@ tm_block *_tm_block_alloc(size_t size)
   if ( ! b ) {
     /*! Make sure it's aligned to tm_block_SIZE. */
     b = _tm_os_alloc_aligned(size);
+
+    /*! Return 0 if OS denied. */
+    if ( ! b )
+      return 0;
+
+    /*! Force allocation of a new block id. */
+    b->id = 0;
 
     /*! Initialize its size. */
     b->size = size;
@@ -678,14 +722,14 @@ tm_block *_tm_block_alloc(size_t size)
       tm.n[tm_b_OS_M] = tm.n[tm_b_OS];
 
     tm_msg("b a os b%p\n", (void*) b);
+
+    /*! Initialize the tm_block. */
+    tm_block_init(b);
+    
+    /*! Increment global block stats. */
+    ++ tm.n[tm_B];
+    tm.blocks_allocated_since_gc += size / tm_block_SIZE;
   }
-
-  /*! Initialize the tm_block. */
-  tm_block_init(b);
-
-  /*! Increment global block stats. */
-  ++ tm.n[tm_B];
-  tm.blocks_allocated_since_gc += size / tm_block_SIZE;
 
   // tm_validate_lists();
 
@@ -883,6 +927,8 @@ void _tm_block_free(tm_block *b)
     tm_assert_test(tm.n[tm_b_OS] > b->size);
     tm.n[tm_b_OS] -= b->size;
 
+    b->id = 0;
+
     /*! And return aligned block back to OS. */
     _tm_os_free_aligned(b, b->size);
 
@@ -918,7 +964,7 @@ tm_block * _tm_block_alloc_for_type(tm_type *t)
 {
   tm_block *b;
   
-  /*! Allocate a new tm_block. */
+  /*! Allocate a new tm_block from free list or OS. */
   b = _tm_block_alloc(tm_block_SIZE);
 
   // fprintf(stderr, "  _tm_block_alloc(%d) => %p\n", tm_block_SIZE, b);
@@ -929,12 +975,6 @@ tm_block * _tm_block_alloc_for_type(tm_type *t)
   }
 
   // tm_msg("b a b%p t%p\n", (void*) b, (void*) t);
-
-#if 0
-    fprintf(stderr, "  _tm_block_alloc_for_type(%p) => %p\n",
-	    (void*) t,
-	    (void*) t->parcel_from_block);
-#endif
 
   return b;
 }
@@ -1054,12 +1094,18 @@ int _tm_node_parcel_some(tm_type *t, long left)
   ++ tm.parceling;
 
   /**
-   * If a tm_block is already available for parceling, parcel from it.
-   * Otherwise, give up.
+   * If a tm_block is already scheduled for parceling, parcel from it.
+   * Otherwise, try to allocate a block from the free list and schedule it for parceling.
    */
-  if ( ! (b = t->parcel_from_block) ) {
-    goto done;
+  if ( ! t->parcel_from_block ) {
+    if ( (b = _tm_block_alloc_from_free_list(tm_block_SIZE)) ) {
+      _tm_type_add_block(t, b);
+    } else {
+      goto done;
+    }
   }
+
+  b = t->parcel_from_block;
 
   // _tm_block_validate(b);
   
@@ -1139,8 +1185,7 @@ int _tm_node_parcel_or_alloc(tm_type *t)
 
   count = _tm_node_parcel_some(t, tm_node_parcel_some_size);
   if ( ! count ) {
-    t->parcel_from_block = _tm_block_alloc_for_type(t);
-    if ( ! t->parcel_from_block )
+    if ( ! _tm_block_alloc_for_type(t) )
       return 0;
     count = _tm_node_parcel_some(t, tm_node_parcel_some_size);
   }
@@ -1638,10 +1683,14 @@ void _tm_gc_full_type_inner(tm_type *type)
 
   tm_msg("gc {\n");
 
+#if tm_TIME_STAT
+  tm_time_stat_begin(&tm.ts_gc_inner);
+#endif
+
   _tm_sweep_is_error = 0;
 
   /* Try this twice: */
-  while ( try ++ < 2) {
+  while ( try ++ < 1 ) {
     /*! Unmark all marked nodes. */
     _tm_phase_init(tm_UNMARK);
     _tm_node_unmark_all();
@@ -1676,6 +1725,10 @@ void _tm_gc_full_type_inner(tm_type *type)
 
   /*! Clear GC stats. */
   _tm_gc_clear_stats();
+
+#if tm_TIME_STAT
+  tm_time_stat_end(&tm.ts_gc_inner);
+#endif
 
   tm_msg("gc }\n");
 }
@@ -1748,9 +1801,37 @@ void *_tm_type_alloc_node_from_free_list(tm_type *t)
 }
 
 
-#ifndef tm_GC_THRESHOLD
-#define tm_GC_THRESHOLD 3 / 4
-#endif
+/*
+ * Returns true if there is memory pressure for a given tm_type.
+ *
+ * - There are no free tm_nodes for the type, and there is no block being parceled, and there are no tm_blocks in the free list.
+ * - OR the number of in-use nodes vs parcelled nodes is greater than tm_GC_
+ */
+static __inline
+int _tm_type_memory_pressureQ(tm_type *t)
+{
+  return 
+    (! t->n[tm_WHITE] && ! t->parcel_from_block && ! tm.free_blocks_n)
+    // || ((t->n[tm_TOTAL] - t->n[tm_FREE]) > t->n[tm_TOTAL] * tm_GC_THRESHOLD)
+    // || ((tm.n[tm_TOTAL] - t->n[tm_FREE]) > tm.n[tm_TOTAL] * tm_GC_THRESHOLD)
+    ;
+}
+
+/*
+ * Returns true if there is memory pressure for a given tm_type.
+ *
+ * - There are no free tm_nodes for the type, and there is no block being parceled, and there are no tm_blocks in the free list.
+ * - OR the number of in-use nodes vs parcelled nodes is greater than tm_GC_
+ */
+static __inline
+int _tm_type_memory_pressureQ_2(tm_type *t)
+{
+  return 
+    _tm_type_memory_pressureQ(t) &&
+    tm.alloc_since_sweep > 100
+    ;
+}
+
 
 /**
  * Allocates a node of a given type.
@@ -1772,6 +1853,7 @@ void *_tm_type_alloc_node_from_free_list(tm_type *t)
 void *_tm_alloc_type_inner(tm_type *t)
 {
   void *ptr;
+  int again;
 #if tm_TIME_STAT
   tm_time_stat *ts;
 #endif
@@ -1788,9 +1870,9 @@ void *_tm_alloc_type_inner(tm_type *t)
   tm.alloc_pass = 0;
   memset(tm.alloc_n, 0, sizeof(tm.alloc_n));
 
-  /*! Assume next allocation phase will be same as current phase. */
-  tm.next_phase = (enum tm_phase) -1;
-  
+  /*! Keep track of how many allocs since last sweep. */
+  ++ tm.alloc_since_sweep;
+
   // tm_validate_lists();
 
   /* Try to allocate again? */
@@ -1802,48 +1884,51 @@ void *_tm_alloc_type_inner(tm_type *t)
   tm_time_stat_begin(ts = &tm.ts_phase[tm.phase]);
 #endif
 
+ again:
+  again = 0;
+
+  /*! Assume next allocation phase will be same as current phase. */
+  tm.next_phase = (enum tm_phase) -1;
+  
   /*! If current allocation phase is: */
   switch ( tm.phase ) {
   case tm_ALLOC:
-    /*! - tm_UNMARK: Allocate tm_ECRU nodes from tm_WHITE free lists. */
+    /*! - tm_ALLOC: Allocate tm_ECRU nodes from tm_WHITE free lists. */
+
+    _tm_node_unmark_some(tm_node_unmark_some_size);
 
     /**
      * If there are no free nodes for the type,
      * Or if there are none to parcel.
      */
-    if ( ! t->n[tm_WHITE] 
-	 || ! _tm_node_parcel_some(t, tm_node_parcel_some_size)
-	 // || (t->n[tm_ECRU] + t->n[tm_BLACK] > t->n[tm_TOTAL] * tm_GC_THRESHOLD)
-	 // || (tm.n[tm_ECRU] + tm.n[tm_BLACK] > tm.n[tm_TOTAL] * tm_GC_THRESHOLD)
-	 ) {
+    if ( _tm_type_memory_pressureQ_2(t) ) {
       tm.next_phase = tm_UNMARK;
     }
     break;
 
   case tm_UNMARK:
     /*! - tm_UNMARK: Unmark some tm_BLACK nodes. */
-    if ( tm.n[tm_BLACK] ) {
-      /*! If all nodes are unmarked, next phase is tm_ROOT. */
-      if ( ! _tm_node_unmark_some(tm_node_unmark_some_size) ) {
-	tm.next_phase = tm_ROOT;
-      }
-    }
 
-    /**
-     * Begin tm_ROOT phase if:
-     *
-     * The number of nodes allocated is greater than the total nodes * tm_GC_THRESHOLD.
-     */
-    if ( (! t->n[tm_WHITE]) ||
-	 (t->n[tm_phase_alloc[tm.phase]] > t->n[tm_TOTAL] * tm_GC_THRESHOLD) ||
-	 (tm.n[tm_phase_alloc[tm.phase]] > tm.n[tm_TOTAL] * tm_GC_THRESHOLD)
-	 ) {
+    /*! If all nodes are unmarked, next phase is tm_ROOT. */
+    if ( ! _tm_node_unmark_some(tm_node_unmark_some_size) ) {
       tm.next_phase = tm_ROOT;
     }
+
+#if 0
+    /**
+     * Begin tm_ROOT phase immediately if memory pressure is still too high.
+     */
+    if ( _tm_type_memory_pressureQ(t) ) {
+      tm.next_phase = tm_ROOT;
+    }
+#endif
     break;
     
   case tm_ROOT:
     /*! - tm_ROOT: scan some roots. */
+
+    _tm_node_scan_some(tm_node_scan_some_size);
+
     /*! If tm_root_scan_full, */
     if ( tm_root_scan_full ) {
       /*! Scan all roots for pointers, next phase is tm_SCAN. */
@@ -1859,36 +1944,25 @@ void *_tm_alloc_type_inner(tm_type *t)
     break;
     
   case tm_SCAN:
-    /* - tm_SCAN: Scan some tm_ECRU nodes for internal pointers. */
+    /* - tm_SCAN: Scan some tm_GREY nodes for internal pointers. */
 
     /*! If scanning is complete, */
     if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
-      /* 
-      ** And if the roots were mutated during mark,
-      ** remark all roots.
-      ** Rationale: A reference to a new node may have been
-      ** copied from the unmarked stack to a global root.
-      */
-      if ( tm_root_scan_full || 
-	   tm.data_mutations || 
-	   tm.stack_mutations ) {
-	/*! Then, scan all roots. */
-	_tm_root_scan_all();
-      } else {
-	/* Otherwise, scan the stack. */
-	_tm_stack_scan();
-      }
-      
-      /** 
-       * If after marking the register and stack,
-       * no additional nodes were marked,
-       * begin sweeping.
-      */
-      if ( ! _tm_node_scan_some(tm_node_scan_some_size) ) {
-	/*! And force SWEEP phase so new node gets allocated as GREY. */
-	_tm_phase_init(tm_SWEEP);
-	tm.next_phase = -1;
-      }
+      /* Scan all roots once more. */
+      _tm_root_scan_all();
+    }
+
+    /**
+     * If still left to scan and under pressure,
+     * scan all grey nodes. 
+     */
+    if ( tm.n[tm_GREY] && _tm_type_memory_pressureQ_2(t) ) {
+      _tm_node_scan_all();
+    }
+
+    if ( ! tm.n[tm_GREY] ) {
+      tm.next_phase = tm_SWEEP;
+      again = 1;
     }
     break;
       
@@ -1901,42 +1975,17 @@ void *_tm_alloc_type_inner(tm_type *t)
      * (See tm_phase_alloc).
      */
 
-    /* If there are unmarked tm_ECRU nodes, */
-    if ( tm.n[tm_ECRU] ) {
-      /*! And if there are nodes to be scanned, */
-      if ( tm.n[tm_GREY] ) {
-	/*! Scan some tm_GREY nodes. */
-	_tm_node_scan_some(tm_node_scan_some_size * 2);
-	if ( ! tm.n[tm_GREY] ) {
-	  /*! If any new nodes became tm_GREY, restart the sweep iterator. */
-	  /**
-	   * Rational: the tm_GREY nodes may have new references 
-	   * to nodes that would otherwise be sweeped.
-	   */
-	  tm_node_LOOP_INIT(tm_ECRU);
-	}
-      }
-
-      /*! If there are no tm_GREY nodes after scanning any tm_GREY nodes, */
-      if ( ! tm.n[tm_GREY] ) {
-	/**
-	 * Try to immediately sweep nodes for the type request,
-	 * otherwise try to immediately sweep nodes for any type.
-	 */
-	if ( ! 
-	     (
-	      _tm_node_sweep_some_for_type(t, tm_node_sweep_some_size) ||
-	      _tm_node_sweep_some(tm_node_sweep_some_size)
-	      ) 
-	     ) {
-	  /*! If no nodes were swept, */
-	  /*! Allocate nodes from free lists or from OS. */
-	  tm.next_phase = tm_ALLOC;
-	}
-      }
-    } else {
-      /*! Otherwise, there are no nodes left to sweep: */
-      /*! Allocate nodes from free lists or from OS. */
+    /**
+     * Try to immediately sweep tm_ECRU nodes for the type request,
+     * otherwise try to immediately sweep nodes for any type.
+     */
+    if ( t->n[tm_TOTAL] && ! _tm_node_sweep_some_for_type(t, tm_node_sweep_some_size) ) {
+      _tm_node_sweep_some(tm_node_sweep_some_size);
+    }
+    
+    /*! If no tm_ECRU (unused) nodes are left to sweep, */
+    if ( ! tm.n[tm_ECRU] ) { 
+      /*! Switch to allocating tm_ECRU nodes from free lists or from OS. */
       tm.next_phase = tm_ALLOC;
     }
     break;
@@ -1951,6 +2000,9 @@ void *_tm_alloc_type_inner(tm_type *t)
   /*! Switch to new phase. */
   if ( tm.next_phase != (enum tm_phase) -1 )
     _tm_phase_init(tm.next_phase);
+
+  if ( again )
+    goto again;
 
   /*! Increment the number tm_node allocs per phase. */
   ++ tm.alloc_by_phase[tm.phase];
@@ -1989,6 +2041,37 @@ void *_tm_alloc_type_inner(tm_type *t)
 #if tm_TIME_STAT
   tm_time_stat_end(ts);
 #endif
+
+  {
+    static FILE *tm_alloc_log;
+    static unsigned long log_id = 0;
+    static unsigned long log_ratio = 1;
+
+    if ( ! tm_alloc_log ) {
+      tm_alloc_log = fopen("/tmp/tm_alloc.log", "w+");
+      fprintf(tm_alloc_log, "#ID PTR WHITE ECRU GREY BLACK PHASE BLOCKS FREE_BLOCKS\n");
+    }
+    if ( tm_alloc_log ) {
+      if ( log_id ++ % log_ratio == 0 ) {
+	fprintf(tm_alloc_log, "%lu %lu %lu %lu %lu %lu %lu %lu %lu, %lu\n",  
+		(unsigned long) tm.alloc_id,
+		(unsigned long) ptr,
+		(unsigned long) tm.n[tm_WHITE],
+		(unsigned long) tm.n[tm_ECRU],
+		(unsigned long) tm.n[tm_GREY],
+		(unsigned long) tm.n[tm_BLACK],
+		(unsigned long) tm.n[tm_TOTAL],
+		(unsigned long) tm.phase,
+		(unsigned long) tm.n[tm_B],
+		(unsigned long) tm.free_blocks_n,
+		0
+		);
+      }
+      if ( log_ratio < 1000 && log_id / log_ratio > 100 ) {
+	log_ratio *= 10;
+      }
+    }
+  }
 
 #if 0
   tm_msg("a %p[%lu]\n", ptr, (unsigned long) t->size);
