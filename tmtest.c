@@ -530,6 +530,42 @@ static void test9()
 #endif
 
 
+
+/* Single array with randomized references, GC every nalloc. */
+static void test10()
+{
+  int n = 1000;
+  int i, j;
+  my_cons **root = 0;
+
+  _tm_sweep_is_error = 0;
+  tm_gc_full();
+
+  root = tm_alloc(sizeof(root[0]) * n);
+
+  for ( j = 0; j < 1000; j ++ ) {
+    for ( i = 0; i < nalloc; i ++ ) {
+      my_cons *c = my_cons_(0, 48);
+      int k = i + j;
+      k %= n;
+
+      root[k] = c;
+      tm_write_barrier_pure(root);
+    }
+    tm_gc_full();
+  }
+
+  end_test();
+
+  root = 0;
+  tm_write_barrier(&root);
+
+  tm_gc_full();
+  tm_assert(tm.n[tm_TOTAL] - tm.n[tm_WHITE] == 0);
+}
+
+
+
 int main(int argc, char **argv, char **envp)
 {
   int argi = 1;
@@ -560,6 +596,7 @@ int main(int argc, char **argv, char **envp)
   run_test(test7);
   run_test(test8);
   run_test(test9);
+  run_test(test10);
 
   tm_msg_prefix = "FINISHED";
   tm_print_stats();

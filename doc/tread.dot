@@ -1,0 +1,56 @@
+digraph "" {
+graph [
+#  rankdir = "LR"
+];
+node [
+  fontsize = "8"
+  shape = "ellipse"
+  style = "filled"
+];
+edge [
+  fontsize = "8"
+];
+subgraph "nodes" {
+"free" [ style="filled" shape="box" ];
+"bottom" [ style="filled" shape="box" ];
+"top" [ style="filled" shape="box" ];
+"scan" [ style="filled" shape="box" ];
+"n0" [  ];
+"n1" [  ];
+"n2" [ fillcolor=red   fontcolor=black ];
+"n3" [ fillcolor=red   fontcolor=black ];
+"n4" [ fillcolor=red   fontcolor=black ];
+"n5" [ fillcolor=grey  fontcolor=black ];
+"n6" [ fillcolor=grey  fontcolor=black ];
+"n7" [ fillcolor=black fontcolor=white ];
+"n8" [ fillcolor=black fontcolor=white ];
+"n9" [ fillcolor=black fontcolor=white ];
+"n10" [ fillcolor=black fontcolor=white ];
+"n0" -> "n1" [ label="n" ];
+"n0" -> "n10" [ label="p" ];
+"n1" -> "n2" [ label="n" ];
+"n1" -> "n0" [ label="p" ];
+"n2" -> "n3" [ label="n" ];
+"n2" -> "n1" [ label="p" ];
+"n3" -> "n4" [ label="n" ];
+"n3" -> "n2" [ label="p" ];
+"n4" -> "n5" [ label="n" ];
+"n4" -> "n3" [ label="p" ];
+"n5" -> "n6" [ label="n" ];
+"n5" -> "n4" [ label="p" ];
+"n6" -> "n7" [ label="n" ];
+"n6" -> "n5" [ label="p" ];
+"n7" -> "n8" [ label="n" ];
+"n7" -> "n6" [ label="p" ];
+"n8" -> "n9" [ label="n" ];
+"n8" -> "n7" [ label="p" ];
+"n9" -> "n10" [ label="n" ];
+"n9" -> "n8" [ label="p" ];
+"n10" -> "n0" [ label="n" ];
+"n10" -> "n9" [ label="p" ];
+"free" -> "n0";
+"bottom" -> "n2";
+"top" -> "n5";
+"scan" -> "n7";
+}
+}
