@@ -135,16 +135,6 @@ void tm_tread_add_white(tm_tread *t, tm_node *n)
 
 
 static __inline
-void tm_tread_all_white(tm_tread *t)
-{
-#if 0
-  assert(t->n[WHITE] == t->n[tm_TOTAL]);
-  t->bottom = t->top = t->scan = t->free;
-#endif
-}
-
-
-static __inline
 tm_node *tm_tread_allocate(tm_tread *t)
 {
   tm_node *n;
