@@ -6,6 +6,7 @@ static
 void render_dot(tm_tread *t, tm_node *mark, const char *desc);
 
 #define N 60
+static int seed;
 static int nodes_parceled = 0;
 static tm_node nodes[N];
 static tm_tread _t, *t = &_t;
@@ -108,7 +109,7 @@ void render_dot(tm_tread *t, tm_node *mark, const char *desc)
 	  "<title>%s</title>\n"
 	  "</head>\n"
 	  "<body>\n"
-	  "<h1>%s</h1>\n"
+	  "<h1>%s %d</h1>\n"
 	  "<pre>%5d W %5d E %5d G %5d B %5d T</pre>\n"
 	  "<div>\n"
 	  "<table>\n"
@@ -132,7 +133,7 @@ void render_dot(tm_tread *t, tm_node *mark, const char *desc)
 	  "</html>\n"
 	  "%s",
 	  filename_html,
-	  filename_html,
+	  filename_html, seed,
 	  t->n[WHITE], t->n[ECRU], t->n[GREY], t->n[BLACK], t->n[tm_TOTAL],
 	  filename_i - 1,
 	  filename_i,
@@ -155,12 +156,13 @@ int main(int argc, char **argv)
   tm_node *n = 0;
 
   if ( argc > 1 ) {
-    srand(atoi(argv[1]));
+    seed = (atoi(argv[1]));
   } else {
     time_t t;
     time(&t);
-    srand(t ^ getpid());
+    seed = (t ^ getpid());
   }
+  srand(seed);
 
   tm_tread_init(t);
   render_dot(t, 0, "initialized");
