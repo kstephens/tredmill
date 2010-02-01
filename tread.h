@@ -222,7 +222,7 @@ int tm_tread_scan(tm_tread *t)
 
 
 static __inline
-int tm_tread_mutation(tm_tread *t, tm_node *n)
+void tm_tread_mutation(tm_tread *t, tm_node *n)
 {
   if ( tm_node_color(n) == BLACK ) {
     if ( t->top == n ) {
@@ -240,9 +240,6 @@ int tm_tread_mutation(tm_tread *t, tm_node *n)
 
     -- t->n[BLACK];
     ++ t->n[GREY];
-    return 1;
-  } else {
-    return 0;
   }
 }
 
