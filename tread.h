@@ -225,9 +225,19 @@ static __inline
 int tm_tread_mutation(tm_tread *t, tm_node *n)
 {
   if ( tm_node_color(n) == BLACK ) {
-    tm_list_remove(n);
-    tm_list_append(t->scan, n);
+    if ( t->top == n ) {
+      t->top = tm_node_prev(n);
+    } else {
+      tm_list_remove(n);
+      tm_list_insert(t->top, n);
+    }
+
     tm_list_set_color(n, GREY);
+
+    if ( ! t->n[GREY] ) {
+      t->scan = n;
+    }
+
     -- t->n[BLACK];
     ++ t->n[GREY];
     return 1;
@@ -245,10 +255,12 @@ int tm_tread_mutation(tm_tread *t, tm_node *n)
 static __inline
 void tm_tread_flip(tm_tread *t)
 {
+#if 0
   fprintf(stderr, "   before flip\n\t n  %d %d %d %d %d\n\tc  %d %d %d %d\n\tc1 %d %d %d %d\n",
 	  t->n[0], t->n[1], t->n[2], t->n[3], t->n[4],
 	  t->c[0], t->c[1], t->c[2], t->c[3],
 	  t->c1[0], t->c1[1], t->c1[2], t->c1[3]);
+#endif
 
   /* Swap bottom and top. */
   {

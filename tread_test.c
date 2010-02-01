@@ -21,7 +21,7 @@ void tm_tread_mark_roots(tm_tread *t)
     int i = rand() % nodes_parceled;
     tm_node *n = &nodes[i];
     if ( tm_node_color(n) == ECRU ) {
-      fprintf(stderr, "    %p\n", (void*) n);
+      // fprintf(stderr, "    %p\n", (void*) n);
       tm_tread_mark(t, n);
       // render_dot(t, n, "mark root @ ");
     }
@@ -35,7 +35,7 @@ void tm_node_scan(tm_node *n)
     int i = rand() % nodes_parceled;
     tm_node *r = &nodes[i];
     if ( tm_node_color(r) == ECRU ) {
-      fprintf(stderr, "    %p => %p\n", (void*) n, (void*) r);
+      // fprintf(stderr, "    %p => %p\n", (void*) n, (void*) r);
       tm_tread_mark(t, r);
     }
     // render_dot(t, n, "scanned @ ");
@@ -52,7 +52,7 @@ int tm_tread_more_white(tm_tread *t)
   for ( i = 0; i < 4; ++ i ) {
     if ( nodes_parceled < N ) {
       tm_node *n = &nodes[nodes_parceled ++];
-      fprintf(stderr, "    %p\n", (void*) n);
+      // fprintf(stderr, "    %p\n", (void*) n);
       tm_tread_add_white(t, n);
       // render_dot(t, n, "more white @ ");
       result ++;
@@ -154,7 +154,13 @@ int main(int argc, char **argv)
   int i;
   tm_node *n = 0;
 
-  srand(0x1234421);
+  if ( argc > 1 ) {
+    srand(atoi(argv[1]));
+  } else {
+    time_t t;
+    time(&t);
+    srand(t ^ getpid());
+  }
 
   tm_tread_init(t);
   render_dot(t, 0, "initialized");
@@ -169,9 +175,18 @@ int main(int argc, char **argv)
     render_dot(t, n, "allocate => ");
     if ( n == 0 )
       break;
+
+    if ( rand() % 2 == 0 ) {
+      int i = rand() % nodes_parceled;
+      tm_node *r = &nodes[i];
+      if ( tm_node_color(r) != WHITE ) {
+	tm_tread_mutation(t, r);
+	render_dot(t, r, "mutation @ ");
+      }
+    }
   }
 
-  render_dot(t, n, "out of memory");
+  render_dot(t, n, n ? "FINISHED" : "out of memory");
   
   return 0;
 }
