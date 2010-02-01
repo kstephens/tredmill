@@ -18,7 +18,8 @@ H_FILES = \
   mark.h \
   tm.h \
   list.h \
-  internal.h
+  internal.h \
+  tread.h
 
 C_FILES = \
   debug.c \
@@ -30,7 +31,8 @@ C_FILES = \
   tm.c \
   init.c \
   user.c \
-  malloc.c
+  malloc.c \
+  tread.c
 
 #CFLAGS += -m64
 CFLAGS += -m32
@@ -46,6 +48,11 @@ LIB_NAME:=tredmill
 include $(MAKS)/lib.mak
 
 TOOL_NAME:=tmtest
+TOOL_LIBS:=tredmill
+TOOL_TEST:=YES
+include $(MAKS)/tool.mak
+
+TOOL_NAME:=tread_test
 TOOL_LIBS:=tredmill
 TOOL_TEST:=YES
 include $(MAKS)/tool.mak

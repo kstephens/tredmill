@@ -33,6 +33,12 @@ typedef struct tm_node {
   tm_list list; 
 } tm_node;
 
+/*! The next node after this node. */
+#define tm_node_next(n) ((tm_node*) tm_list_next(n))
+
+/*! The previous node before this node. */
+#define tm_node_prev(n) ((tm_node*) tm_list_prev(n))
+
 /*! The color of a tm_node. */
 #define tm_node_color(n) ((tm_color) tm_list_color(n))
 

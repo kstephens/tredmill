@@ -31,18 +31,18 @@ typedef struct tm_list {
    */
   union {
     /*! Pointer to prev element, uncolored. */
-    struct tm_list *_prev;
+    struct tm_list *_ptr;
 
     /*! Pointer word. */
     unsigned long _word;
 
     struct {
 #ifdef __LITTLE_ENDIAN
-      unsigned long _bits  : sizeof(void*) * 8 - 2;
       unsigned long _color : 2;
+      unsigned long _bits  : sizeof(void*) * 8 - 2;
 #else
-      unsigned long _color : 2;
       unsigned long _bits  : sizeof(void*) * 8 - 2;
+      unsigned long _color : 2;
 #endif
     } _c; /*!< bitfield struct containing color. */
   } _prev;
@@ -82,7 +82,7 @@ static __inline
 void tm_list_init(void *l)
 {
   ((tm_list *)l)->_next = l;
-  ((tm_list *)l)->_prev._prev = l;
+  ((tm_list *)l)->_prev._ptr = l;
 }
 
 
