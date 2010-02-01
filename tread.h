@@ -71,7 +71,7 @@ struct tm_tread {
 static __inline
 void tm_tread_flip(tm_tread *t);
 static __inline
-int tm_tread_scan(tm_tread *t);
+void tm_tread_scan(tm_tread *t);
 int tm_tread_more_white(tm_tread *t);
 void tm_tread_mark_roots(tm_tread *t);
 
@@ -166,9 +166,10 @@ tm_node *tm_tread_allocate(tm_tread *t)
 
 
 static __inline
-int tm_tread_mark(tm_tread *t, tm_node *n)
+void tm_tread_mark(tm_tread *t, tm_node *n)
 {
-  if ( tm_node_color(n) != GREY || tm_node_color(n) != BLACK ) {
+  assert(tm_node_color(n) != WHITE);
+  if ( tm_node_color(n) != ECRU ) {
     if ( t->top == n ) {
       t->top = tm_node_prev(n);
     } else {
@@ -184,18 +185,14 @@ int tm_tread_mark(tm_tread *t, tm_node *n)
 
     -- t->n[ECRU];
     ++ t->n[GREY];
-
-    return 1;
   }
-
-  return 0;
 }
 
 
 void tm_node_scan(tm_node *n);
 
 static __inline
-int tm_tread_scan(tm_tread *t)
+void tm_tread_scan(tm_tread *t)
 {
   tm_node *n = t->scan;
   if ( t->scan != t->top ) {
@@ -203,9 +200,6 @@ int tm_tread_scan(tm_tread *t)
     tm_list_set_color(n, BLACK);
     -- t->n[GREY];
     ++ t->n[BLACK];
-    return 1;
-  } else {
-    return 0;
   }
 }
 
