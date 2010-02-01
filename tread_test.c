@@ -14,7 +14,7 @@ void tm_tread_mark_roots(tm_tread *t)
 {
   int j;
 
-  render_dot(t, 0, "flipped");
+  // render_dot(t, 0, "flipped");
 
   fprintf(stderr, "  tm_tread_mark_roots(%p)\n", (void*) t);
   for ( j = 0; j < 4; ++ j ) {
@@ -23,7 +23,7 @@ void tm_tread_mark_roots(tm_tread *t)
     if ( tm_node_color(n) == ECRU ) {
       fprintf(stderr, "    %p\n", (void*) n);
       tm_tread_mark(t, n);
-      render_dot(t, n, "mark root @ ");
+      // render_dot(t, n, "mark root @ ");
     }
   }
 }
@@ -38,7 +38,7 @@ void tm_node_scan(tm_node *n)
       fprintf(stderr, "    %p => %p\n", (void*) n, (void*) r);
       tm_tread_mark(t, r);
     }
-    render_dot(t, n, "scanned @ ");
+    // render_dot(t, n, "scanned @ ");
   }
 }
 
@@ -54,7 +54,7 @@ int tm_tread_more_white(tm_tread *t)
       tm_node *n = &nodes[nodes_parceled ++];
       fprintf(stderr, "    %p\n", (void*) n);
       tm_tread_add_white(t, n);
-      render_dot(t, n, "more white @ ");
+      // render_dot(t, n, "more white @ ");
       result ++;
     } else {
       break;
@@ -109,23 +109,31 @@ void render_dot(tm_tread *t, tm_node *mark, const char *desc)
 	  "</head>\n"
 	  "<body>\n"
 	  "<h1>%s</h1>\n"
+	  "<pre>%5d W %5d E %5d G %5d B %5d T</pre>\n"
+	  "<div>\n"
 	  "<table>\n"
-	  "<tr>\n"
-	  "  <td><object data=\"tread-%03d.svg\" type=\"image/svg+xml\" /></td>\n"
-	  "  <td><object data=\"tread-%03d.svg\" type=\"image/svg+xml\" /></td>\n"
-	  "  <td><object data=\"tread-%03d.svg\" type=\"image/svg+xml\" /></td>\n"
-	  "</tr>\n"
 	  "<tr>\n"
 	  "  <td align=\"center\"><a href=\"tread-%03d.html\">&lt;&lt;</td>\n"
 	  "  <td align=\"center\"><a href=\"tread-%03d.svg\">###</a></td>\n"
 	  "  <td align=\"center\"><a href=\"tread-%03d.html\">&gt;&gt;</a></td>\n"
 	  "</tr>\n"
 	  "</table>\n"
+	  "</div>\n"
+	  "<div>\n"
+	  "<table>\n"
+	  "<tr>\n"
+	  "  <td><object data=\"tread-%03d.svg\" type=\"image/svg+xml\" /></td>\n"
+	  "  <td><object data=\"tread-%03d.svg\" type=\"image/svg+xml\" /></td>\n"
+	  "  <td><object data=\"tread-%03d.svg\" type=\"image/svg+xml\" /></td>\n"
+	  "</tr>\n"
+	  "</table>\n"
+	  "</div>\n"
 	  "</body>\n"
 	  "</html>\n"
 	  "%s",
 	  filename_html,
 	  filename_html,
+	  t->n[WHITE], t->n[ECRU], t->n[GREY], t->n[BLACK], t->n[tm_TOTAL],
 	  filename_i - 1,
 	  filename_i,
 	  filename_i + 1,
@@ -156,7 +164,7 @@ int main(int argc, char **argv)
     render_dot(t, 0, "more white");
   }
 
-  for ( i = 0; i < N * 2; ++ i ) {
+  for ( i = 0; i < N * 4; ++ i ) {
     n = tm_tread_allocate(t);
     render_dot(t, n, "allocate => ");
     if ( n == 0 )
