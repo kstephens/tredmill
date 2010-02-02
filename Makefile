@@ -11,6 +11,9 @@ H_FILES = \
   debug.h \
   stats.h \
   os.h \
+  color.h \
+  phase.h \
+  type.h \
   root.h \
   ptr.h \
   barrier.h \
@@ -25,6 +28,8 @@ C_FILES = \
   debug.c \
   stats.c \
   os.c \
+  color.c \
+  phase.c \
   type.c \
   root.c \
   barrier.c \

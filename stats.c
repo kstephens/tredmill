@@ -176,7 +176,7 @@ void tm_print_phase_transition_stats()
   for ( i = 0; i <= tm_phase_END; ++ i ) {
     tm_msg("P   %-10s ", tm_phase_name[i]);
     for ( j = 0; j <= tm_phase_END; ++ j ) {
-      tm_msg1("%-10lu ", (unsigned long) tm.n_phase_transitions[i][j]);
+      tm_msg1("%-10lu ", (unsigned long) tm.p.n_phase_transitions[i][j]);
     }
     tm_msg1("\n");
   }
@@ -396,9 +396,9 @@ void tm_print_time_stats()
   tm_time_stat_print_(&tm.ts_barrier_black, ~0, 0);
 
   for ( i = 0; 
-	i < (sizeof(tm.ts_phase) / sizeof(tm.ts_phase[0]));
+	i < (sizeof(tm.p.ts_phase) / sizeof(tm.p.ts_phase[0]));
 	++ i ) {
-    tm_time_stat_print_(&tm.ts_phase[i], ~0, &tm.alloc_by_phase[i]);
+    tm_time_stat_print_(&tm.p.ts_phase[i], ~0, &tm.p.alloc_by_phase[i]);
   }
 
   tm_msg("T }\n");

@@ -36,7 +36,7 @@ void tm_type_init(tm_type *t, size_t size)
   t->tread.c = &tm.colors;
 
   /*! Initialize the tm_type node counts. */
-  t->n = &t->tread.n;
+  t->n = t->tread.n;
   
   /*! Initialize the tm_type.color_list. */
   {

@@ -9,9 +9,7 @@
 /****************************************************************************/
 /* Names */
 
-extern const char *tm_color_name[];
 extern const char *tm_struct_name[];
-extern const char *tm_phase_name[];
 
 /****************************************************************************/
 /* Debug messages. */

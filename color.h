@@ -75,6 +75,11 @@ typedef enum tm_color {
 
 } tm_color;
 
+
+/*! Color names. */
+extern const char *tm_color_name[];
+
+
 /**
  * Keeps track of current color mappings.
  *

@@ -16,6 +16,7 @@
 #include "tredmill/list.h"
 #include "tredmill/config.h"
 #include "tredmill/color.h"
+#include "tredmill/phase.h"
 #include "tredmill/debug.h"
 #include "tredmill/root.h"
 #include "tredmill/node.h"
@@ -26,35 +27,36 @@
 
 #include "util/bitset.h" /* bitset_t */
 
-/****************************************************************************/
-/*! \defgroup phase Phase */
+
+/**************************************************************************/
+/*! \defgroup color Color */
 /*@{*/
 
-/**
- * The phases of the allocator.
- *
- * These are similar to the phases in 
- * typical in a stop-the-world collector,
- * except the work for these phases is
- * done for short periods within tm_alloc().
- */
-enum tm_phase {
-  /*! Allocate nodes.         (WHITE->ECRU) */
-  tm_ALLOC,
-  /*! Unmark nodes.           (BLACK->ECRU) */
-  tm_UNMARK,
-  /*! Begin mark roots.       (ECRU->GREY)  */ 
-  tm_ROOT,
-  /*! Scan marked nodes.      (ECRU->GREY, GREY->BLACK) */
-  tm_SCAN,
-  /*! Sweep unmarked nodes.   (ECRU->WHITE) */
-  tm_SWEEP,
-  /*! Placeholder for size of arrays indexed by tm_phase. */
-  tm_phase_END
-};
+/*
+This table defines what color a newly allocated node
+should be during the current allocation phase.
+*/
 
+/**
+ * Default allocated nodes to "not marked".
+ *
+ * Rational: some are allocated but thrown away early.
+ */
+#define tm_DEFAULT_ALLOC_COLOR tm_ECRU
+
+/**
+ * Default allocated node color during sweep.
+ *
+ * Rational: 
+ * tm_ECRU is considered garabage during tm_SWEEP.
+ *
+ * Assume that new nodes are actually in-use and may contain pointers 
+ * to prevent accidental sweeping.
+ */
+#define tm_SWEEP_ALLOC_COLOR tm_GREY
 
 /*@}*/
+
 
 /****************************************************************************/
 /*! \defgroup internal_data Internal: Data */
@@ -72,10 +74,8 @@ struct tm_data {
   /*! Current status. */
   int inited, initing;
 
-  int ECRU, BLACK; /* tm_ECRU, tm_BLACK */
-
-  /*! The current processing phase. */
-  enum tm_phase phase, next_phase;
+  /*! The phase data. */
+  tm_phase_data p;
 
   /*! The current colors. */
   tm_colors colors;
@@ -83,28 +83,14 @@ struct tm_data {
   /*! The color of newly allocated nodes. */
   int alloc_color;
 
-  /*! Number of transitions from one phase to another. */
-  size_t n_phase_transitions[tm_phase_END + 1][tm_phase_END + 1];
-
   /*! Number of transitions from one color to another. */
   size_t n_color_transitions[tm_TOTAL + 1][tm_TOTAL + 1];
 
-  /*! Possible actions during current phase. */
-  int parceling;
-  int allocating;
-  int marking;
-  int scanning;
-  int sweeping;
-  int unmarking;
-
-  /*! If true, full GC is triggered on next call to tm_alloc(). */
+ /*! If true, full GC is triggered on next call to tm_alloc(). */
   int trigger_full_gc;
 
   /*! Global node counts. */
   size_t n[tm__LAST3];
-
-  /*! Number of cumulative allocations during each phase. */
-  size_t alloc_by_phase[tm_phase_END];
 
   /*! Stats during tm_alloc(). */
   size_t alloc_n[tm__LAST3];
@@ -207,9 +193,9 @@ struct tm_data {
   /*! Current address in root being marked. */
   const char *rp;
 
-  /*! How many root mutations happened since the start of the ROOT phase. */
+  /*! How many root mutations happened since root scan. */
   unsigned long data_mutations;
-  /*! How many stack mutations happened since the start of the ROOT phase. */
+  /*! How many stack mutations happened since root scan. */
   unsigned long stack_mutations;
 
   /*! Time Stats: */
@@ -234,8 +220,6 @@ struct tm_data {
   tm_time_stat   ts_barrier_pure;       
   /*! Time spent in tm_write_barrier on tm_BLACK nodes. */
   tm_time_stat   ts_barrier_black;
-  /*! Time spent in each phase during tm_alloc().   */
-  tm_time_stat   ts_phase[tm_phase_END]; 
     
   /*! Stats/debugging support: */
 
@@ -402,9 +386,6 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
 /*! \defgroup internal_routine Internal: Routine */
 /*@{*/
 
-
-/*! Initializes a new allocation phase. */
-void _tm_phase_init(int p);
 
 /*! Sets the color of a tm_node, in a tm_block. */
 void tm_node_set_color(tm_node *n, tm_block *b, tm_color c);

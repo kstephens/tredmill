@@ -222,35 +222,6 @@ static
 tm_block *_tm_block_alloc_from_free_list(size_t size);
 
 /**************************************************************************/
-/*! \defgroup color Color */
-/*@{*/
-
-/*
-This table defines what color a newly allocated node
-should be during the current allocation phase.
-*/
-
-/**
- * Default allocated nodes to "not marked".
- *
- * Rational: some are allocated but thrown away early.
- */
-#define tm_DEFAULT_ALLOC_COLOR tm_ECRU
-
-/**
- * Default allocated node color during sweep.
- *
- * Rational: 
- * tm_ECRU is considered garabage during tm_SWEEP.
- *
- * Assume that new nodes are actually in-use and may contain pointers 
- * to prevent accidental sweeping.
- */
-#define tm_SWEEP_ALLOC_COLOR tm_GREY
-
-/*@}*/
-
-/**************************************************************************/
 /*! \defgroup internal_data Internal: Data */
 /*@{*/
 
@@ -261,151 +232,6 @@ struct tm_data tm;
 
 
 /*@}*/
-
-/****************************************************************************/
-/*! \defgroup phase Phase */
-/*@{*/
-
-
-/**
- * Initialize the collection/allocation phase.
- */
-void _tm_phase_init(int p)
-{
-  tm_msg("p %s\n", tm_phase_name[p]);
-
-#if 0
-  /* DEBUG: DELETE ME! */
-  if ( tm.alloc_id == 1987 )
-    tm_stop();
-#endif
-
-  ++ tm.n_phase_transitions[tm.phase][p];
-  ++ tm.n_phase_transitions[tm.phase][tm_phase_END];
-  ++ tm.n_phase_transitions[tm_phase_END][p];
-  ++ tm.n_phase_transitions[tm_phase_END][tm_phase_END];
-
-  if ( tm.phase == tm_SWEEP && tm.phase != p ) {
-    tm.alloc_since_sweep = 0;
-  }
-
-#if 0
-  fprintf(stderr, "\n%s->%s #%lu %lu %lu %lu %lu\n", tm_phase_name[tm.phase], tm_phase_name[p], (unsigned long) tm.alloc_id,
-	  (unsigned long) tm.n[tm_WHITE],
-	  (unsigned long) tm.n[tm_ECRU],
-	  (unsigned long) tm.n[tm_GREY],
-	  (unsigned long) tm.n[tm_BLACK],
-	  0
-	  );
-#endif
-
-  switch ( (tm.phase = p) ) {
-  case tm_ALLOC:
-    /**
-     * - tm_ALLOC: allocate nodes until memory pressure is high.
-     */
-    tm.allocating = 1;
-    tm.unmarking = 0;
-    tm.marking = 0;
-    tm.scanning = 0;
-    tm.sweeping = 0;
-
-    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
-
-    break;
-
-  case tm_UNMARK:
-    /**
-     * - tm_UNMARK: begin unmarking tm_BLACK nodes as tm_ECRU:
-     */
-    tm.allocating = 0;
-    tm.unmarking = 1;
-    tm.marking = 0;
-    tm.scanning = 0;
-    tm.sweeping = 0;
-
-    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
-
-    /*! Set up for unmarking. */
-    tm_node_LOOP_INIT(tm_BLACK);
-
-    /*! Keep track of how many tm_BLACK nodes are in use. */
-    tm.n[tm_NU] = tm.n[tm_BLACK];
-    break;
-
-  case tm_ROOT:
-    /**
-     * - tm_ROOT: begin scanning roots for potential pointers:
-     */
-    tm.allocating = 0;
-    tm.unmarking = 0;
-    tm.marking = 1;
-    tm.scanning = 0;
-    tm.sweeping = 0;
-
-    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
-
-    /*! Mark stack and data roots as un-mutated. */
-    tm.stack_mutations = tm.data_mutations = 0;
-
-    /*! Initialize root mark loop. */
-    _tm_root_loop_init();
-    break;
-
-  case tm_SCAN:
-    /**
-     * - tm_SCAN: begin scanning tm_GREY nodes for internal pointers:
-     */
-    tm.allocating = 0;
-    tm.unmarking = 0;
-    tm.marking = 1;
-    tm.scanning = 1;
-    tm.sweeping = 0;
-
-    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
-
-    /*! Mark stack and data roots as un-mutated. */
-    tm.stack_mutations = tm.data_mutations = 0;
-
-    /*! Set up for marking. */
-    tm_node_LOOP_INIT(tm_GREY);
-    break;
-
-  case tm_SWEEP:
-    /**
-     * - tm_SWEEP: begin reclaiming any ECRU nodes as WHITE.
-     */
-    tm.allocating = 0;
-    tm.unmarking = 0;
-    tm.marking = 0;
-    tm.scanning = 0;
-    tm.sweeping = 1;
-
-    tm.alloc_color = tm_SWEEP_ALLOC_COLOR;
-
-    tm_assert_test(tm.n[tm_GREY] == 0);
-
-    /* Set up for scanning. */
-    // tm_node_LOOP_INIT(tm_GREY);
-
-    /* Set up for sweeping. */
-    // tm_node_LOOP_INIT(tm_ECRU);
-    break;
-
-  default:
-    tm_fatal();
-    break;
-  }
-
-  if ( 1 || p == tm_SWEEP ) {
-    // tm_print_stats();
-  }
-  //tm_validate_lists();
-}
-
-
-/*@}*/
-
 
 /**
  * Begin sweeping of tm_blocks.
@@ -447,7 +273,7 @@ void _tm_node_set_color(tm_node *n, tm_block *b, tm_type *t, tm_color c)
   ++ tm.alloc_n[tm_TOTAL];
 
   /*! Increment global color transitions. */
-  if ( ! tm.parceling ) {
+  if ( ! tm.p.parceling ) {
     tm_assert_test(c != nc);
     ++ tm.n_color_transitions[nc][c];
     ++ tm.n_color_transitions[nc][tm_TOTAL];
@@ -1101,7 +927,7 @@ int _tm_node_parcel_some(tm_type *t, long left)
   size_t bytes = 0;
   tm_block *b;
   
-  ++ tm.parceling;
+  ++ tm.p.parceling;
 
   /**
    * If a tm_block is already scheduled for parceling, parcel from it.
@@ -1172,7 +998,7 @@ int _tm_node_parcel_some(tm_type *t, long left)
 
   done:
 
-  -- tm.parceling;
+  -- tm.p.parceling;
 
 #if 0
   if ( count )
@@ -1661,17 +1487,17 @@ void *_tm_alloc_type_inner(tm_type *t)
   /* BEGIN CRITICAL SECTION */
 
 #if tm_TIME_STAT
-  tm_time_stat_begin(ts = &tm.ts_phase[tm.phase]);
+  tm_time_stat_begin(ts = &tm.p.ts_phase[tm.p.phase]);
 #endif
 
  again:
   again = 0;
 
   /*! Assume next allocation phase will be same as current phase. */
-  tm.next_phase = (enum tm_phase) -1;
+  tm.p.next_phase = (enum tm_phase) -1;
   
   /*! If current allocation phase is: */
-  switch ( tm.phase ) {
+  switch ( tm.p.phase ) {
   case tm_ALLOC:
     /*! - tm_ALLOC: Allocate tm_ECRU nodes from tm_WHITE free lists. */
 
@@ -1682,7 +1508,7 @@ void *_tm_alloc_type_inner(tm_type *t)
      * Or if there are none to parcel.
      */
     if ( _tm_type_memory_pressureQ_2(t) ) {
-      tm.next_phase = tm_UNMARK;
+      tm.p.next_phase = tm_UNMARK;
     }
     break;
 
@@ -1691,7 +1517,7 @@ void *_tm_alloc_type_inner(tm_type *t)
 
     /*! If all nodes are unmarked, next phase is tm_ROOT. */
     if ( ! _tm_node_unmark_some(tm_node_unmark_some_size) ) {
-      tm.next_phase = tm_ROOT;
+      tm.p.next_phase = tm_ROOT;
     }
 
 #if 0
@@ -1699,7 +1525,7 @@ void *_tm_alloc_type_inner(tm_type *t)
      * Begin tm_ROOT phase immediately if memory pressure is still too high.
      */
     if ( _tm_type_memory_pressureQ(t) ) {
-      tm.next_phase = tm_ROOT;
+      tm.p.next_phase = tm_ROOT;
     }
 #endif
     break;
@@ -1713,12 +1539,12 @@ void *_tm_alloc_type_inner(tm_type *t)
     if ( tm_root_scan_full ) {
       /*! Scan all roots for pointers, next phase is tm_SCAN. */
       _tm_root_scan_all();
-      tm.next_phase = tm_SCAN;
+      tm.p.next_phase = tm_SCAN;
     } else {
       /*! Otherwise, scan some roots for pointers. */
       if ( ! _tm_root_scan_some() ) {
 	/*! If there were no roots scanned, next phase is tm_SCAN. */
-	tm.next_phase = tm_SCAN;
+	tm.p.next_phase = tm_SCAN;
       }
     }
     break;
@@ -1741,7 +1567,7 @@ void *_tm_alloc_type_inner(tm_type *t)
     }
 
     if ( ! tm.n[tm_GREY] ) {
-      tm.next_phase = tm_SWEEP;
+      tm.p.next_phase = tm_SWEEP;
       again = 1;
     }
     break;
@@ -1766,7 +1592,7 @@ void *_tm_alloc_type_inner(tm_type *t)
     /*! If no tm_ECRU (unused) nodes are left to sweep, */
     if ( ! tm.n[tm_ECRU] ) { 
       /*! Switch to allocating tm_ECRU nodes from free lists or from OS. */
-      tm.next_phase = tm_ALLOC;
+      tm.p.next_phase = tm_ALLOC;
     }
     break;
 
@@ -1778,14 +1604,14 @@ void *_tm_alloc_type_inner(tm_type *t)
   /* END CRITICAL SECTION */
 
   /*! Switch to new phase. */
-  if ( tm.next_phase != (enum tm_phase) -1 )
-    _tm_phase_init(tm.next_phase);
+  if ( tm.p.next_phase != (enum tm_phase) -1 )
+    _tm_phase_init(tm.p.next_phase);
 
   if ( again )
     goto again;
 
   /*! Increment the number tm_node allocs per phase. */
-  ++ tm.alloc_by_phase[tm.phase];
+  ++ tm.p.alloc_by_phase[tm.p.phase];
 
   /*! If a node is not available on the tm_type free list, */
   if ( ! (ptr = _tm_type_alloc_node_from_free_list(t)) ) {
@@ -1841,7 +1667,7 @@ void *_tm_alloc_type_inner(tm_type *t)
 		(unsigned long) tm.n[tm_GREY],
 		(unsigned long) tm.n[tm_BLACK],
 		(unsigned long) tm.n[tm_TOTAL],
-		(unsigned long) tm.phase,
+		(unsigned long) tm.p.phase,
 		(unsigned long) tm.n[tm_B],
 		(unsigned long) tm.free_blocks_n
 		);

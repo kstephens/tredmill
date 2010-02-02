@@ -96,8 +96,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm.ts_barrier_root.name = "tm_barrier_r";
   tm.ts_barrier_black.name = "tm_barrier B";
 
-  for ( i = 0; i < (sizeof(tm.ts_phase) / sizeof(tm.ts_phase[0])); ++ i ) {
-    tm.ts_phase[i].name = tm_phase_name[i];
+  for ( i = 0; i < (sizeof(tm.p.ts_phase) / sizeof(tm.p.ts_phase[0])); ++ i ) {
+    tm.p.ts_phase[i].name = tm_phase_name[i];
   }
 
   /*! Initialize tm_msg() ignore table. */

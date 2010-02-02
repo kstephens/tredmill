@@ -1,15 +1,6 @@
 #include "tread.h"
 
 
-static
-const char *__tm_color_name[] = { 
-  "WHITE",
-  "ECRU",
-  "GREY",
-  "BLACK",
-  0
-};
-
 void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_node **marks)
 {
   static
