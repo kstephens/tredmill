@@ -96,12 +96,20 @@ GARBAGE_DIRS += doc/latex
 #################################################################
 
 TESTS = test1 test2 test3 test4 test5 test6 test7 test8 test9
-test: all mak_gen/Linux/t/tmtest
+test: all run-tests
+
+run-test : tmtest-run tread_test-run 
+
+tmtest-run : mak_gen/Linux/t/tmtest
 	for t in $(TESTS) ;\
 	do \
-	  mak_gen/Linux/t/tmtest $$t ;\
+	  $< $$t ;\
 	  gnuplot alloc_log.gp - ;\
 	done
+
+tread_test-run : mak_gen/Linux/t/tread_test
+	mkdir -p images
+	$<
 
 debug: all
 	gdb mak_gen/Linux/t/tmtest
