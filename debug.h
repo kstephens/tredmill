@@ -38,12 +38,14 @@ void _tm_assert(const char *expr, const char *file, int lineno);
 #endif
 
 #if tm_ASSERT
-#define tm_assert(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
+#define tm_assert(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y); tm_msg1("\n"); tm_abort();} } while(0)
 
-#define tm_assert_test(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y), tm_msg1("\n"), tm_abort();} } while(0)
+#define tm_assert_test(X,Y...)do { if ( ! (X) ) {_tm_assert(#X, __FILE__, __LINE__); tm_msg1("" Y); tm_msg1("\n"); tm_abort();} } while(0)
+#define tm_assert_equal(X,Y,F)do { if ( (X) != (Y) ) {_tm_assert(#X " == " #Y, __FILE__, __LINE__); tm_msg1(#X " == " F, X); tm_msg1(", " #Y " == " F, Y); tm_msg1("\n"); tm_abort(); } } while(0)
 #else
 #define tm_assert(X,Y...)(void)0
 #define tm_assert_test(X,Y...)(void)0
+#define tm_assert_equal(X,Y,F)(void)0
 #endif
 
 #define tm_warn(X,Y...) ((X) ? 0 : (tm_msg1("\n"), tm_msg("WARNING assertion \"%s\" failed %s:%d ", #X, __FILE__, __LINE__), tm_msg1("" Y), tm_msg1("\n"), tm_stop(), 1))

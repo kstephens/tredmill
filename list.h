@@ -37,12 +37,18 @@ typedef struct tm_list {
     unsigned long _word;
 
     struct {
-#ifdef __LITTLE_ENDIAN
-      unsigned long _color : 2;
-      unsigned long _bits  : sizeof(void*) * 8 - 2;
-#else
-      unsigned long _bits  : sizeof(void*) * 8 - 2;
-      unsigned long _color : 2;
+#ifndef TM_LIST__PREV__C
+#if defined(__i386__) || defined(__i486__)
+#define TM_LIST__PREV__C \
+      unsigned long _color : 2; \
+      unsigned long _bits  : sizeof(void*) * 8 - 2
+#endif
+#endif
+
+#ifdef TM_LIST__PREV__C
+      TM_LIST__PREV__C;
+#else 
+#error "Cannot determine layout of tm_list._prev._c; #define TM_LIST__PREV__C bit fields."
 #endif
     } _c; /*!< bitfield struct containing color. */
   } _prev;
@@ -233,8 +239,19 @@ void * tm_list_take_first(void *_l)
 static __inline
 void tm_list_assert_layout()
 {
+  unsigned long word = 0x12345678UL;
   tm_list_INIT(l);
   tm_list_INIT(r);
+  tm_list_INIT(x);
+  
+  x->_prev._ptr = (void*) word;
+  tm_assert_equal(x->_prev._word, word, "%lu");
+  tm_assert_equal(tm_list_prev(x), (void*) word, "%p");
+  tm_assert_equal(tm_list_color(x), 0, "%d");
+  tm_list_set_color(x, 3);
+  tm_assert_equal(x->_prev._word,  word | 3, "%lu");
+  tm_assert_equal(tm_list_prev(x), (void*) word, "%p");
+  tm_assert_equal(tm_list_color(x), 3, "%d");
 
   tm_assert(tm_list_color(l) == 0);
 
