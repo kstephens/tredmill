@@ -128,9 +128,11 @@ int _tm_root_scan_some()
   long left = tm_root_scan_some_size;
 
   tm_msg("r G%lu B%lu {\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
-  tm_msg("r [%p,%p] %s\n", 
+  tm_msg("r [%p,%p] %p(%p) %s\n", 
 	 tm.roots[tm.rooti].l, 
 	 tm.roots[tm.rooti].h,
+	 tm.roots[tm.rooti].callback, 
+	 tm.roots[tm.rooti].callback_data, 
 	 tm.roots[tm.rooti].name 
 	 );
 
@@ -146,9 +148,11 @@ int _tm_root_scan_some()
 	goto done;
       }
 
-      tm_msg("r [%p,%p] %s\n", 
+      tm_msg("r [%p,%p] %p(%p) %s\n", 
 	     tm.roots[tm.rooti].l, 
 	     tm.roots[tm.rooti].h,
+	     tm.roots[tm.rooti].callback,
+	     tm.roots[tm.rooti].callback_data,
 	     tm.roots[tm.rooti].name);
       
       tm.rp = tm.roots[tm.rooti].l;
