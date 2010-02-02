@@ -1648,35 +1648,7 @@ void *_tm_alloc_type_inner(tm_type *t)
   tm_time_stat_end(ts);
 #endif
 
-  {
-    static FILE *tm_alloc_log;
-    static unsigned long log_id = 0;
-    static unsigned long log_ratio = 1;
-
-    if ( ! tm_alloc_log ) {
-      tm_alloc_log = fopen("/tmp/tm_alloc.log", "w+");
-      fprintf(tm_alloc_log, "#ID PTR WHITE ECRU GREY BLACK PHASE BLOCKS FREE_BLOCKS\n");
-    }
-    if ( tm_alloc_log ) {
-      if ( log_id ++ % log_ratio == 0 ) {
-	fprintf(tm_alloc_log, "%lu %lu %lu %lu %lu %lu %lu %lu %lu, %lu\n",  
-		(unsigned long) tm.alloc_id,
-		(unsigned long) ptr,
-		(unsigned long) tm.n[tm_WHITE],
-		(unsigned long) tm.n[tm_ECRU],
-		(unsigned long) tm.n[tm_GREY],
-		(unsigned long) tm.n[tm_BLACK],
-		(unsigned long) tm.n[tm_TOTAL],
-		(unsigned long) tm.p.phase,
-		(unsigned long) tm.n[tm_B],
-		(unsigned long) tm.free_blocks_n
-		);
-      }
-      if ( log_ratio < 1000 && log_id / log_ratio > 100 ) {
-	log_ratio *= 10;
-      }
-    }
-  }
+  tm_alloc_log(ptr);
 
 #if 0
   tm_msg("a %p[%lu]\n", ptr, (unsigned long) t->size);

@@ -78,6 +78,9 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   tm_assert(sizeof(unsigned long) == sizeof(void *));
 
+  /*! Initialize allocation log. */
+  tm_alloc_log_init();
+
   /*! Initialize colors. */
   tm_colors_init(&tm.colors);
 

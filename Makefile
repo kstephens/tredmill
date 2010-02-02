@@ -14,6 +14,7 @@ H_FILES = \
   color.h \
   phase.h \
   type.h \
+  tread.h \
   root.h \
   ptr.h \
   barrier.h \
@@ -22,7 +23,7 @@ H_FILES = \
   tm.h \
   list.h \
   internal.h \
-  tread.h
+  log.h
 
 C_FILES = \
   debug.c \
@@ -31,6 +32,7 @@ C_FILES = \
   color.c \
   phase.c \
   type.c \
+  tread.c \
   root.c \
   barrier.c \
   mark.c \
@@ -38,7 +40,7 @@ C_FILES = \
   init.c \
   user.c \
   malloc.c \
-  tread.c
+  log.c
 
 #CFLAGS += -m64
 CFLAGS += -m32
@@ -109,7 +111,7 @@ run-test : tread_test-run tmtest-run
 tmtest-run : mak_gen/Linux/t/tmtest
 	for t in $(TESTS) ;\
 	do \
-	  $< $$t ;\
+	  TM_ALLOC_LOG=/tmp/tm_alloc.log $< $$t ;\
 	  gnuplot alloc_log.gp - ;\
 	done
 

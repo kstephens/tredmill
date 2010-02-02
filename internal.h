@@ -18,6 +18,7 @@
 #include "tredmill/color.h"
 #include "tredmill/phase.h"
 #include "tredmill/debug.h"
+#include "tredmill/log.h"
 #include "tredmill/root.h"
 #include "tredmill/node.h"
 #include "tredmill/block.h"
