@@ -37,9 +37,11 @@ int _tm_root_add_1(tm_root *a)
 
   tm.roots[i] = *a;
 
-  tm_msg("R a [%p,%p] %s %d\n", 
+  tm_msg("R a [%p,%p] %p(%p) %s %d\n", 
 	 tm.roots[i].l, 
 	 tm.roots[i].h,
+	 tm.roots[i].callback,
+	 tm.roots[i].callback_data,
 	 tm.roots[i].name,
 	 i);
 
@@ -198,7 +200,6 @@ void _tm_root_add(tm_root *a)
   _tm_root_add_1(a);
 }
 
-
 /**
  * API: Add a root set.
  */
@@ -209,6 +210,7 @@ int tm_root_add(const char *name, const void *l, const void *h)
   a.name = name;
   a.l = l;
   a.h = h;
+  a.callback = 0;
 
   tm.root_newi = -1;
 
@@ -220,6 +222,58 @@ int tm_root_add(const char *name, const void *l, const void *h)
   _tm_root_add(&a);
 
   return tm.root_newi;
+}
+
+
+/**
+ * API: Add a root set.
+ */
+int tm_root_add_callback(const char *name, void (*callback)(void*), void *callback_data)
+{
+  tm_root a;
+
+  a.name = name;
+  a.l = a.h = 0;
+  a.callback = callback;
+  a.callback_data = callback_data;
+
+  tm.root_newi = -1;
+
+  tm_msg("R A %p(%p) %s PRE\n", 
+	 a.callback,
+	 a.callback_data,
+	 a.name);
+
+  _tm_root_add(&a);
+
+  return tm.root_newi;
+}
+
+
+/**
+ * API: Add a root set.
+ *
+ * Returns true if a root was removed.
+ */
+int tm_root_remove_callback(const char *name, void (*callback)(void*), void *callback_data)
+{
+  int i;
+  for ( i = 0; i < tm.root_newi; ++ i ) {
+    tm_root *r = &tm.roots[i];
+    if ( (name && strcmp(name, r->name) == 0) ||
+	 (callback && callback == r->callback && callback_data == r->callback_data) ) {
+      -- tm.root_newi;
+      while ( i < tm.root_newi ) {
+	r[0] = r[1];
+	++ r;
+	++ i;
+      }
+      return 1;
+      break;
+    }
+  }
+
+  return 0;
 }
 
 

@@ -17,6 +17,7 @@
 #include "tredmill/config.h"
 #include "tredmill/color.h"
 #include "tredmill/debug.h"
+#include "tredmill/root.h"
 #include "tredmill/node.h"
 #include "tredmill/block.h"
 #include "tredmill/type.h"
@@ -51,28 +52,6 @@ enum tm_phase {
   /*! Placeholder for size of arrays indexed by tm_phase. */
   tm_phase_END
 };
-
-
-/*@}*/
-
-/****************************************************************************/
-/*! \defgroup root_set Root Set */
-/*@{*/
-
-
-/**
- * A root set region to be scanned for possible pointers.
- *
- * Pointers p within l >= p and p < h are considered within this root set.
- */
-typedef struct tm_root {
-  /*! The name of the root. */
-  const char *name;
-  /*! The low address of the root to be scanned. */
-  const void *l;
-  /*! The high address of the root to be scanned. */
-  const void *h;
-} tm_root;
 
 
 /*@}*/

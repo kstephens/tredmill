@@ -27,13 +27,13 @@ typedef struct tm_type {
   /*! All types list: tm.types */
   tm_list list;
 
-  /*! The type id: tm.type_id */
-  int id;
-
 #if tm_name_GUARD
   /*! A name for debugging. */
   const char *name;
 #endif
+
+  /*! The type id: tm.type_id */
+  int id;
 
   /*! Hash table next ptr: tm.type_hash[]. */
   struct tm_type *hash_next;  

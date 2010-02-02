@@ -60,6 +60,10 @@ void _tm_root_scan_id(int i)
     tm_msg("r [%p,%p] %s\n", tm.roots[i].l, tm.roots[i].h, tm.roots[i].name);
     _tm_range_scan(tm.roots[i].l, tm.roots[i].h);
   }
+  if ( tm.roots[i].callback ) {
+    tm_msg("r %p(%p) %s\n", tm.roots[i].callback, tm.roots[i].callback_data, tm.roots[i].name);
+    tm.roots[i].callback(tm.roots[i].callback_data);
+  }
 }
 
 /**
