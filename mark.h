@@ -72,6 +72,8 @@ int _tm_root_scan_some();
 __inline
 void _tm_range_scan(const void *b, const void *e);
 
+void _tm_node_scan(tm_node *n);
+
 size_t _tm_node_scan_some(size_t amount);
 void _tm_node_scan_all();
 

@@ -15,6 +15,7 @@ H_FILES = \
   phase.h \
   type.h \
   tread.h \
+  block.h \
   root.h \
   ptr.h \
   barrier.h \
@@ -33,6 +34,7 @@ C_FILES = \
   phase.c \
   type.c \
   tread.c \
+  block.c \
   root.c \
   barrier.c \
   mark.c \
@@ -103,25 +105,28 @@ GARBAGE_DIRS += doc/latex
 
 #################################################################
 
+RUN=gdb --args
+RUN=
+
 TESTS = test1 test2 test3 test4 test5 test6 test7 test8 test9
 test: all run-tests
 
-run-test : tread_test-run tmtest-run 
+run-test : run-tread_test run-tmtest
 
-tmtest-run : mak_gen/Linux/t/tmtest
+run-tmtest : mak_gen/Linux/t/tmtest
 	for t in $(TESTS) ;\
 	do \
-	  TM_ALLOC_LOG=/tmp/tm_alloc.log $< $$t ;\
+	  TM_ALLOC_LOG=/tmp/tm_alloc.log $(RUN) $< $$t ;\
 	  gnuplot alloc_log.gp - ;\
 	done
 
-tread_test-run : mak_gen/Linux/t/tread_test
+run-tread_test : mak_gen/Linux/t/tread_test
 	set -e ;\
 	for t in 1265080291 ''; \
 	do \
 	  mkdir -p images ;\
 	  rm -f images/*.* ;\
-	  $< $$t ;\
+	  $(RUN) $< $$t ;\
 	done
 
 debug: all

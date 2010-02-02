@@ -44,6 +44,22 @@ int tm_msg_enable_all = 0;
 /*! \defgroup debugging Debugging */
 /*@{*/
 
+
+void tm_msg_init()
+{
+  /*! Initialize tm_msg() ignore table. */
+  if ( tm_msg_enable_all ) {
+    tm_msg_enable("\1", 1);
+  } else {
+    tm_msg_enable(tm_msg_enable_default, 1);
+    tm_msg_enable(" \t\n\r", 1);
+  }
+
+  tm_msg_enable("WF", 1);
+  // tm_msg_enable("b", 1);
+}
+
+
 /**
  * Enable or disable messages.
  *

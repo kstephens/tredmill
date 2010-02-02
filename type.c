@@ -238,5 +238,90 @@ tm_type *tm_size_to_type(size_t size)
 }
 
 
+/**
+ * Allocates a tm_block of tm_block_SIZE for a tm_type.
+ */
+tm_block * _tm_type_alloc_block(tm_type *t)
+{
+  tm_block *b;
+  
+  /*! Allocate a new tm_block from free list or OS. */
+  b = _tm_block_alloc(tm_block_SIZE);
+
+  // fprintf(stderr, "  _tm_block_alloc(%d) => %p\n", tm_block_SIZE, b);
+
+  /*! Add it to the tm_type.blocks list */
+  if ( b ) {
+    _tm_type_add_block(t, b);
+  }
+
+  // tm_msg("b a b%p t%p\n", (void*) b, (void*) t);
+
+  return b;
+}
+
+
+/**
+ * Add a tm_block to a tm_type.
+ */
+void _tm_type_add_block(tm_type *t, tm_block *b)
+{
+  tm_assert_test(t);
+  tm_assert_test(b);
+  /*! Assert that tm_block is not already associated with a tm_type. */
+  tm_assert_test(b->type == 0);
+
+  /*! Associate tm_block with the tm_type. */
+  b->type = t;
+
+  /*! Compute the capacity of this block. */
+  tm_assert_test(! b->n[tm_CAPACITY]);
+  b->n[tm_CAPACITY] = (b->end - b->begin) / (sizeof(tm_node) + t->size); 
+
+  /*! Begin parceling from this block. */
+  tm_assert_test(! t->parcel_from_block);
+  t->parcel_from_block = b;
+
+  /*! Increment type block stats. */
+  ++ t->n[tm_B];
+
+  /*! Decrement global block stats. */
+  ++ tm.n[tm_B];
+
+  /*! Add to type's block list. */
+  tm_list_insert(&t->blocks, b);
+}
+
+
+/**
+ * Remove a tm_block from its tm_type.
+ */
+void _tm_type_remove_block(tm_type *t, tm_block *b)
+{
+  tm_assert_test(t);
+  tm_assert_test(b->type);
+  tm_assert_test(b->type == t);
+
+  /*! Decrement type block stats. */
+  tm_assert_test(t->n[tm_B]);
+  -- t->n[tm_B];
+
+  /*! Decrement global block stats. */
+  tm_assert_test(tm.n[tm_B]);
+  -- tm.n[tm_B];
+
+  /*! Do not parcel nodes from it any more. */
+  if ( t->parcel_from_block == b ) {
+    t->parcel_from_block = 0;
+  }
+
+  /*! Remove tm-block from tm_type.block list. */
+  tm_list_remove(b);
+
+  /*! Dissassociate tm_block with the tm_type. */
+  b->type = 0;
+}
+
+
 /*@}*/
 

@@ -56,6 +56,14 @@ struct tm_tread {
 } tm_tread;
 
 
+void tm_tread_validate(tm_tread *t);
+#define tm_tread_VALIDATE(t) (void)(t)
+#ifndef tm_tread_VALIDATE
+#define tm_tread_VALIDATE(t) tm_tread_validate(t)
+#endif
+
+void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_node **marks);
+
 static __inline
 void tm_tread_flip(tm_tread *t);
 static __inline
@@ -71,7 +79,7 @@ void tm_tread_init(tm_tread *t)
 {
   t->free = t->bottom = t->top = t->scan = 0;
   memset(t->n, 0, sizeof(t->n));
-  t->c = 0;
+  tm_tread_VALIDATE(t);
 }
 
 
@@ -100,15 +108,7 @@ void tm_tread_add_white(tm_tread *t, tm_node *n)
   ++ t->n[t->c->c[tm_WHITE]];
   ++ t->n[tm_TOTAL];
 
-
-#if 0
-  if ( t->n[t->c->c[tm_WHITE]] == 2 ) {
-    assert(tm_node_next(t->free) == t->bottom);
-    assert(tm_node_prev(t->free) == t->bottom);
-    assert(tm_node_next(t->bottom) == t->free);
-    assert(tm_node_prev(t->bottom) == t->free);
-  }
-#endif
+  tm_tread_VALIDATE(t);
 }
 
 
@@ -140,7 +140,28 @@ tm_node *tm_tread_allocate(tm_tread *t)
   -- t->n[t->c->c[tm_WHITE]];
   ++ t->n[t->c->c[tm_BLACK]];
 
+  tm_tread_VALIDATE(t);
+
   return n;
+}
+
+
+static __inline
+void tm_tread_mark_grey(tm_tread *t, tm_node *n)
+{
+  if ( t->top == n ) {
+    t->top = tm_node_prev(n);
+  } else {
+    tm_list_remove(n);
+    tm_list_insert(t->top, n);
+  }
+  
+  tm_list_set_color(n, t->c->c[tm_GREY]);
+  
+  if ( ! t->n[t->c->c[tm_GREY]] ) {
+    t->scan = n;
+    //    t->top = tm_node_next(t->scan);
+  }
 }
 
 
@@ -152,37 +173,31 @@ void tm_tread_mark(tm_tread *t, tm_node *n)
     if ( t->bottom == n ) {
       t->bottom = tm_node_next(n);
     }
-    if ( t->top == n ) {
-      t->top = tm_node_prev(n);
-    } else {
-      tm_list_remove(n);
-      tm_list_insert(t->top, n);
-    }
 
-    tm_list_set_color(n, t->c->c[tm_GREY]);
-
-    if ( ! t->n[t->c->c[tm_GREY]] ) {
-      t->scan = n;
-    }
+    tm_tread_mark_grey(t, n);
 
     -- t->n[t->c->c[tm_ECRU]];
     ++ t->n[t->c->c[tm_GREY]];
+
+    tm_tread_VALIDATE(t);
   }
 }
 
 
-void _tm_node_scan(tm_node *n);
+void _tm_node_scan (tm_node *n);
 
 static __inline
 void tm_tread_scan(tm_tread *t)
 {
-  tm_node *n = t->scan;
   if ( t->scan != t->top ) {
+    tm_node *n = t->scan;
     tm_list_set_color(n, t->c->c[tm_BLACK]);
     -- t->n[t->c->c[tm_GREY]];
     ++ t->n[t->c->c[tm_BLACK]];
-    _tm_node_scan(n);
+    _tm_node_scan (n);
     t->scan = tm_node_prev(n);
+
+    // tm_tread_VALIDATE(t);
   }
 }
 
@@ -192,21 +207,12 @@ static __inline
 void tm_tread_mutation(tm_tread *t, tm_node *n)
 {
   if ( tm_node_color(n) == t->c->c[tm_BLACK] ) {
-    if ( t->top == n ) {
-      t->top = tm_node_prev(n);
-    } else {
-      tm_list_remove(n);
-      tm_list_insert(t->top, n);
-    }
-
-    tm_list_set_color(n, t->c->c[tm_GREY]);
-
-    if ( ! t->n[t->c->c[tm_GREY]] ) {
-      t->scan = n;
-    }
+    tm_tread_mark_grey(t, n);
 
     -- t->n[t->c->c[tm_BLACK]];
     ++ t->n[t->c->c[tm_GREY]];
+
+    tm_tread_VALIDATE(t);
   }
 }
 
@@ -259,6 +265,8 @@ void tm_tread_flip(tm_tread *t)
   /* Start scanning at top. */
   t->scan = t->top;
 
+  tm_tread_VALIDATE(t);
+
   /* Mark roots. */
   tm_tread_mark_roots(t);
 
@@ -267,9 +275,7 @@ void tm_tread_flip(tm_tread *t)
     t->bottom = t->free = tm_node_next(t->scan);
   }
 
+  tm_tread_VALIDATE(t);
 }
-
-
-void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_node **marks);
 
 #endif

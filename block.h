@@ -108,6 +108,15 @@ typedef struct tm_block {
 #endif
 
 
+void tm_block_init(tm_block *b);
+
+tm_block *_tm_block_alloc_from_free_list(size_t size);
+tm_block *_tm_block_alloc(size_t size);
+int _tm_block_unparcel_nodes(tm_block *b);
+void _tm_block_reclaim(tm_block *b);
+void _tm_block_sweep_init();
+void _tm_block_free(tm_block *b);
+
 /*@}*/
 
 #endif

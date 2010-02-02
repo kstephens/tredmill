@@ -51,8 +51,10 @@ typedef struct tm_type {
   /*! The tread for this type. */
   tm_tread tread;
 
+#if 1
   /*! Lists of node by color; see tm_node.list. */
   tm_list color_list[tm_TOTAL];
+#endif
 
   /*! The current block we are parceling from. */ 
   struct tm_block *parcel_from_block;
@@ -66,6 +68,10 @@ void tm_type_init(tm_type *t, size_t size);
 tm_type *tm_type_new(size_t size);
 tm_adesc *tm_adesc_for_size(tm_adesc *desc, int force_new);
 tm_type *tm_size_to_type(size_t size);
+
+struct tm_block * _tm_type_alloc_block(tm_type *t);
+void _tm_type_add_block(tm_type *t, struct tm_block *b);
+void _tm_type_remove_block(tm_type *t, struct tm_block *b);
 
 /*@}*/
 

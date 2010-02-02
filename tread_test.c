@@ -1,3 +1,6 @@
+#define _tm_node_scan _tm_node_scan_test
+#define tm_node_set_color(n,c) tm_list_set_color(n, c)
+
 #define tm_tread_UNIT_TEST 1
 #include "tread.h"
 
@@ -34,7 +37,7 @@ void tm_tread_mark_roots(tm_tread *t)
 }
 
 
-void _tm_node_scan(tm_node *n)
+void _tm_node_scan (tm_node *n)
 {
   if ( (n - nodes) % 2 == 0 ) {
     int i = rand() % nodes_parceled;
@@ -170,9 +173,12 @@ int main(int argc, char **argv)
   }
   srand(seed);
 
+  tm_msg_init();
+
   tm_colors_init(&colors);
-  tm_tread_init(t);
+
   t->c = &colors;
+  tm_tread_init(t);
   render_dot(t, 0, "initialized");
 
   for ( i = 0; i < 2; ++ i ) {

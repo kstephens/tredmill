@@ -19,6 +19,7 @@ extern const char *tm_msg_prefix;
 extern const char *tm_msg_enable_default;
 extern int tm_msg_enable_all;
 
+void tm_msg_init();
 void tm_msg_enable(const char *codes, int enable);
 
 extern int _tm_msg_ignored;

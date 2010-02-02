@@ -1,5 +1,48 @@
 #include "tread.h"
+#include "tredmill/debug.h"
 
+
+void tm_tread_validate(tm_tread *t)
+{
+  tm_node *n;
+  size_t c[tm__LAST];
+  size_t j;
+
+  memset(c, 0, sizeof(c));
+
+  if ( t->free ) {
+    n = t->free;
+    do {
+      ++ c[t->c->c1[tm_node_color(n)]];
+      ++ c[tm_TOTAL];
+      n = tm_node_next(n);
+    } while ( n != t->free );
+
+    tm_assert_equal(c[tm_WHITE], t->n[t->c->c[tm_WHITE]], "%lu");
+    tm_assert_equal(c[tm_ECRU],  t->n[t->c->c[tm_ECRU]],  "%lu");
+    tm_assert_equal(c[tm_GREY],  t->n[t->c->c[tm_GREY]],  "%lu");
+    tm_assert_equal(c[tm_BLACK], t->n[t->c->c[tm_BLACK]], "%lu");
+    tm_assert_equal(c[tm_TOTAL],  t->n[tm_TOTAL], "%lu");
+  }
+
+  /* All nodes from scan to top are GREY */
+  j = 0;
+  for ( n = t->scan; n != t->top; n = tm_node_next(n) ) {
+    tm_assert_equal(tm_node_color(n), t->c->c[tm_GREY], "%d");
+    ++ j;
+  }
+  tm_assert_equal(j, c[tm_GREY], "%lu");
+
+  /* All nodes from free to bottom are WHITE */
+  if ( c[tm_WHITE] > 1 && 0 ) {
+    j = 0;
+    for ( n = t->free; n != t->bottom; n = tm_node_next(n) ) {
+      tm_assert_equal(tm_node_color(n), t->c->c[tm_WHITE], "%d");
+      ++ j;
+    }
+    tm_assert_equal(j, c[tm_WHITE], "%lu");
+  }
+}
 
 void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_node **marks)
 {

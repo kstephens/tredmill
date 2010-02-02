@@ -290,7 +290,9 @@ static __inline
 void tm_node_iterator_init(tm_node_iterator *ni)
 {
   ni->type = (void *) &tm.types;
+#if 1
   ni->node_next = (void *) &ni->type->color_list[ni->color];
+#endif
   ni->node = 0;
   ni->scan_node = 0;
   ni->scan_ptr = 0;

@@ -57,8 +57,6 @@ int tm_stack_growth(char *ptr, int depth)
 }
 
 
-static void _tm_block_sweep_init();
-
 /**
  * API: Initialize the tm allocator.
  *
@@ -102,16 +100,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm.ts_barrier_root.name = "tm_barrier_r";
   tm.ts_barrier_black.name = "tm_barrier B";
 
-  /*! Initialize tm_msg() ignore table. */
-  if ( tm_msg_enable_all ) {
-    tm_msg_enable("\1", 1);
-  } else {
-    tm_msg_enable(tm_msg_enable_default, 1);
-    tm_msg_enable(" \t\n\r", 1);
-  }
-
-  tm_msg_enable("WF", 1);
-  // tm_msg_enable("b", 1);
+  /*! Initialize tm_msg(). */
+  tm_msg_init();
 
   tm_list_assert_layout();
 
