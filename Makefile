@@ -8,6 +8,7 @@ OPTIMIZE=YES
 INCLS += ..
 
 H_FILES = \
+  tm_data.h \
   debug.h \
   stats.h \
   os.h \
@@ -15,23 +16,27 @@ H_FILES = \
   phase.h \
   type.h \
   tread.h \
+  tread_inline.h \
   block.h \
+  node.h \
+  node_color.h \
   root.h \
   ptr.h \
   barrier.h \
   page.h \
   mark.h \
   tm.h \
+  tm_data.h \
   list.h \
   internal.h \
   log.h
 
 C_FILES = \
+  tm_data.c \
   debug.c \
   stats.c \
   os.c \
   color.c \
-  phase.c \
   type.c \
   tread.c \
   block.c \
@@ -39,9 +44,12 @@ C_FILES = \
   barrier.c \
   mark.c \
   tm.c \
+  tm_data.c \
+  internal.c \
   init.c \
   user.c \
   malloc.c \
+  alloc.c \
   log.c
 
 #CFLAGS += -m64
@@ -114,9 +122,10 @@ test: all run-tests
 run-test : run-tread_test run-tmtest
 
 run-tmtest : mak_gen/Linux/t/tmtest
+	export TM_ALLOC_LOG=/tmp/tm_alloc.log ;\
 	for t in $(TESTS) ;\
 	do \
-	  TM_ALLOC_LOG=/tmp/tm_alloc.log $(RUN) $< $$t ;\
+	  $(RUN) $< $$t ;\
 	  gnuplot alloc_log.gp - ;\
 	done
 

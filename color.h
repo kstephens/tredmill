@@ -92,7 +92,7 @@ typedef struct tm_colors {
   /**
    * Forward color mappings.
    *
-   * c[tm_BLACK] maps to the actual tm_list_color() of the nodes.
+   * c[tm_XXX] maps to the actual tm_list_color() of the nodes and any the index into any counters.
    */
   tm_color c[tm_TOTAL];
 

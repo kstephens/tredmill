@@ -1,6 +1,6 @@
 #include "tread.h"
 #include "tredmill/debug.h"
-
+#include "tredmill/tm_data.h"
 
 void tm_tread_validate(tm_tread *t)
 {
@@ -13,22 +13,22 @@ void tm_tread_validate(tm_tread *t)
   if ( t->free ) {
     n = t->free;
     do {
-      ++ c[t->c->c1[tm_node_color(n)]];
+      ++ c[tm.colors.c1[tm_node_color(n)]];
       ++ c[tm_TOTAL];
       n = tm_node_next(n);
     } while ( n != t->free );
 
-    tm_assert_equal(c[tm_WHITE], t->n[t->c->c[tm_WHITE]], "%lu");
-    tm_assert_equal(c[tm_ECRU],  t->n[t->c->c[tm_ECRU]],  "%lu");
-    tm_assert_equal(c[tm_GREY],  t->n[t->c->c[tm_GREY]],  "%lu");
-    tm_assert_equal(c[tm_BLACK], t->n[t->c->c[tm_BLACK]], "%lu");
+    tm_assert_equal(c[tm_WHITE], t->n[WHITE], "%lu");
+    tm_assert_equal(c[tm_ECRU],  t->n[ECRU],  "%lu");
+    tm_assert_equal(c[tm_GREY],  t->n[GREY],  "%lu");
+    tm_assert_equal(c[tm_BLACK], t->n[BLACK], "%lu");
     tm_assert_equal(c[tm_TOTAL],  t->n[tm_TOTAL], "%lu");
   }
 
   /* All nodes from scan to top are GREY */
   j = 0;
   for ( n = t->scan; n != t->top; n = tm_node_next(n) ) {
-    tm_assert_equal(tm_node_color(n), t->c->c[tm_GREY], "%d");
+    tm_assert_equal(tm_node_color(n), GREY, "%d");
     ++ j;
   }
   tm_assert_equal(j, c[tm_GREY], "%lu");
@@ -37,7 +37,7 @@ void tm_tread_validate(tm_tread *t)
   if ( c[tm_WHITE] > 1 && 0 ) {
     j = 0;
     for ( n = t->free; n != t->bottom; n = tm_node_next(n) ) {
-      tm_assert_equal(tm_node_color(n), t->c->c[tm_WHITE], "%d");
+      tm_assert_equal(tm_node_color(n), WHITE, "%d");
       ++ j;
     }
     tm_assert_equal(j, c[tm_WHITE], "%lu");
@@ -92,7 +92,7 @@ void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_
   if ( first ) {
     node = first;
     do {
-      int c = t->c->c1[tm_node_color(node)];
+      int c = tm.colors.c1[tm_node_color(node)];
       next = tm_node_next(node);
       int i, marked = 0;
       for ( i = 0; i < markn; ++ i ) {
@@ -118,11 +118,11 @@ void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_
   }
 
   fprintf(fp, "\"free\"   [ shape=box, label=\"free: %d\" ];\n",
-	  (int) t->n[t->c->c[tm_WHITE]]);
+	  (int) t->n[WHITE]);
   fprintf(fp, "\"bottom\" [ shape=box ];\n");
   fprintf(fp, "\"top\"    [ shape=box ];\n");
   fprintf(fp, "\"scan\"   [ shape=box, label=\"scan: %d\" ];\n",
-	  (int) t->n[t->c->c[tm_GREY]]);
+	  (int) t->n[GREY]);
 
   if ( first ) {
     node = first;

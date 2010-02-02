@@ -33,4 +33,6 @@ void tm_print_time_stats();
 void tm_print_color_transition_stats();
 void tm_print_phase_transition_stats();
 
+void tm_gc_clear_stats();
+
 #endif

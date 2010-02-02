@@ -82,11 +82,13 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   /*! Initialize colors. */
   tm_colors_init(&tm.colors);
 
+#if 0
   /*! Initialize allocation colors. */
   tm.alloc_color = tm_ECRU;
 
   /*! Initialize phase data. */
   tm_phase_data_init(&tm.p);
+#endif
 
   /*! Initialize time stat names. */
   tm.ts_os_alloc.name = "tm_os_alloc";
@@ -276,9 +278,10 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   _tm_root_loop_init();
 
   /*! Initialize global tm_type list. */
-  tm_type_init(&tm.types, 0);
+  tm_list_init(&tm.types);
   tm_list_set_color(&tm.types, tm_LIVE_TYPE);
 
+#if 0
   /*! Initialize tm_node color iterators. */
 #define X(C) \
   tm.node_color_iter[C].color = C; \
@@ -290,6 +293,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   X(tm_BLACK);
 
 #undef X
+#endif
 
   /*! Initialize page managment. */
   memset(tm.page_in_use, 0, sizeof(tm.page_in_use));
@@ -316,9 +320,11 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   /*! Initialize block sweep iterator. */
   _tm_block_sweep_init();
 
+#if 0
   /*! Initialize phase: start by unmarking. */
   _tm_phase_init(tm_UNMARK);
-  
+#endif
+
   /*! Set up write barrier hooks. */
   _tm_write_barrier = __tm_write_barrier;
   _tm_write_barrier_pure = __tm_write_barrier_pure;

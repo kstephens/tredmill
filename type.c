@@ -33,7 +33,6 @@ void tm_type_init(tm_type *t, size_t size)
 
   /*! Initialize the type's tread. */
   tm_tread_init(&t->tread);
-  t->tread.c = &tm.colors;
 
   /*! Initialize the tm_type node counts. */
   t->n = t->tread.n;
@@ -45,6 +44,13 @@ void tm_type_init(tm_type *t, size_t size)
     for ( j = 0; j < sizeof(t->color_list) / sizeof(t->color_list[0]); ++ j ) {
       tm_list_init(&t->color_list[j]);
       tm_list_set_color(&t->color_list[j], j);
+
+      fprintf(stderr, "%p [%p %p]\n", 
+	      (void*) &t->color_list[j],
+	      (void*) tm_list_next(&t->color_list[j]),
+	      (void*) tm_list_prev(&t->color_list[j]));
+      
+      tm_assert(tm_list_first(&t->color_list[j]) == 0);
     }
   }
 
@@ -78,8 +84,12 @@ tm_type *tm_type_new(size_t size)
   /*! Add to global tm.types list. */
   tm_list_insert(&tm.types, t);
   
+  if ( ! tm.type_scan ) {
+    tm.type_scan = t;
+  }
+
   /**
-   * Allocate some tm_nodes now so the tm_type's free list (tm_WHITE) is not empty.
+   * Allocate some tm_nodes now so the tm_type's free list (WHITE) is not empty.
    * to avoid triggering a collection.
    *
    * Assume this is being called because an tm_alloc() is envitable.
@@ -312,11 +322,37 @@ void _tm_type_remove_block(tm_type *t, tm_block *b)
     t->parcel_from_block = 0;
   }
 
-  /*! Remove tm-block from tm_type.block list. */
+  /*! Remove tm_block from tm_type.block list. */
   tm_list_remove(b);
 
   /*! Dissassociate tm_block with the tm_type. */
   b->type = 0;
+}
+
+
+/**
+ * Allocates a node from at tm_type's free list.
+ */
+void *tm_type_alloc_node_from_free_list(tm_type *t)
+{
+  tm_node *n;
+
+  /*! If a tm_node is not available on the tm_type's free (WHITE) list, return 0; */
+  if ( ! (n = tm_list_first(&t->color_list[WHITE])) ) {
+    return 0;
+  }
+
+  /*! Assert that is really WHITE. */
+  tm_assert_test(tm_node_color(n) == WHITE);
+  
+  /*! Put the tm_node on the appropriate allocated list, depending on the tm.phase. */
+  _tm_node_set_color(n, tm_node_to_block(n), t, tm.alloc_color);
+  
+  /*! Remove from its current list, and add it to the type's WHITE list. */
+  tm_list_remove_and_append(&t->color_list[WHITE], n);
+
+  /*! Prepare node, and return a pointer to the node's data space.  */
+  return tm_type_prepare_allocated_node(t, n);
 }
 
 
@@ -400,7 +436,7 @@ int tm_type_parcel_some_nodes(tm_type *t, long left)
       /*! Initialize the tm_node. */
       tm_block_init_node(b, n);
 
-      tm_assert_test(tm_node_color(n) == tm_WHITE);
+      tm_assert_test(tm_node_color(n) == WHITE);
 
       /*! Update local accounting. */
       ++ count;
@@ -425,7 +461,7 @@ int tm_type_parcel_some_nodes(tm_type *t, long left)
 
 #if 0
   if ( count )
-    tm_msg("N i n%lu b%lu t%lu\n", count, bytes, t->n[tm_WHITE]);
+    tm_msg("N i n%lu b%lu t%lu\n", count, bytes, t->n[WHITE]);
 #endif
 
   /*! Return the number of tm_nodes actually allocated. */

@@ -458,7 +458,7 @@ static void test8()
     }
 #if 0
     tm_gc_full();
-    tm_assert(tm.n[tm_TOTAL] - tm.n[tm_WHITE] <= n + 1);
+    tm_assert(tm.n[tm_TOTAL] - tm.n[WHITE] <= n + 1);
 #endif
   }
   for ( j = 0; j < n; j ++ ) {
@@ -475,7 +475,7 @@ static void test8()
   tm_write_barrier(&root);
 
   tm_gc_full();
-  tm_assert(tm.n[tm_TOTAL] - tm.n[tm_WHITE] == 0);
+  tm_assert(tm.n[tm_TOTAL] - tm.n[WHITE] == 0);
 }
 
 
@@ -561,7 +561,7 @@ static void test10()
   tm_write_barrier(&root);
 
   tm_gc_full();
-  tm_assert(tm.n[tm_TOTAL] - tm.n[tm_WHITE] == 0);
+  tm_assert(tm.n[tm_TOTAL] - tm.n[WHITE] == 0);
 }
 
 

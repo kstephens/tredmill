@@ -49,6 +49,7 @@ void _tm_phase_init(int p)
     tm_stop();
 #endif
 
+#if 0
   ++ tm.p.n_phase_transitions[tm.p.phase][p];
   ++ tm.p.n_phase_transitions[tm.p.phase][tm_phase_END];
   ++ tm.p.n_phase_transitions[tm_phase_END][p];
@@ -57,13 +58,14 @@ void _tm_phase_init(int p)
   if ( tm.p.phase == tm_SWEEP && tm.p.phase != p ) {
     tm.alloc_since_sweep = 0;
   }
+#endif
 
 #if 0
   fprintf(stderr, "\n%s->%s #%lu %lu %lu %lu %lu\n", tm_phase_name[tm.phase], tm_phase_name[p], (unsigned long) tm.alloc_id,
-	  (unsigned long) tm.n[tm_WHITE],
-	  (unsigned long) tm.n[tm_ECRU],
-	  (unsigned long) tm.n[tm_GREY],
-	  (unsigned long) tm.n[tm_BLACK],
+	  (unsigned long) tm.n[WHITE],
+	  (unsigned long) tm.n[ECRU],
+	  (unsigned long) tm.n[GREY],
+	  (unsigned long) tm.n[BLACK],
 	  0
 	  );
 #endif
@@ -85,7 +87,7 @@ void _tm_phase_init(int p)
 
   case tm_UNMARK:
     /**
-     * - tm_UNMARK: begin unmarking tm_BLACK nodes as tm_ECRU:
+     * - tm_UNMARK: begin unmarking BLACK nodes as ECRU:
      */
     tm.p.allocating = 0;
     tm.p.unmarking = 1;
@@ -96,10 +98,10 @@ void _tm_phase_init(int p)
     tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
 
     /*! Set up for unmarking. */
-    tm_node_LOOP_INIT(tm_BLACK);
+    tm_node_LOOP_INIT(BLACK);
 
-    /*! Keep track of how many tm_BLACK nodes are in use. */
-    tm.n[tm_NU] = tm.n[tm_BLACK];
+    /*! Keep track of how many BLACK nodes are in use. */
+    tm.n[tm_NU] = tm.n[BLACK];
     break;
 
   case tm_ROOT:
@@ -137,7 +139,7 @@ void _tm_phase_init(int p)
     tm.stack_mutations = tm.data_mutations = 0;
 
     /*! Set up for marking. */
-    tm_node_LOOP_INIT(tm_GREY);
+    tm_node_LOOP_INIT(GREY);
     break;
 
   case tm_SWEEP:
@@ -152,13 +154,13 @@ void _tm_phase_init(int p)
 
     tm.alloc_color = tm_SWEEP_ALLOC_COLOR;
 
-    tm_assert_test(tm.n[tm_GREY] == 0);
+    tm_assert_test(tm.n[GREY] == 0);
 
     /* Set up for scanning. */
-    // tm_node_LOOP_INIT(tm_GREY);
+    // tm_node_LOOP_INIT(GREY);
 
     /* Set up for sweeping. */
-    // tm_node_LOOP_INIT(tm_ECRU);
+    // tm_node_LOOP_INIT(ECRU);
     break;
 
   default:

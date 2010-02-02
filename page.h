@@ -5,6 +5,7 @@
 #define tm_PAGE_H
 
 #include "util/bitset.h"
+#include "tredmill/tm_data.h"
 
 
 /*! True if ptr is aligned to a tm_block */

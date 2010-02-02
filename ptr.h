@@ -4,6 +4,7 @@
 #ifndef tm_PTR_H
 #define tm_PTR_H
 
+#include "tredmill/page.h"  /* _tm_page_in_use() */
 
 #ifdef  tm_ptr_to_node_TEST
 #define tm_ptr_to_node_TEST 0
@@ -280,7 +281,7 @@ tm_node *tm_ptr_to_node(void *p)
     n = (tm_node*) pp;
 
     /*! Avoid references to free nodes. */
-    if ( tm_node_color(n) == tm_WHITE )
+    if ( tm_node_color(n) == WHITE )
       return 0;
 
     /*! Return a node. */

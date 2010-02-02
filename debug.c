@@ -1,7 +1,12 @@
 /** \file debug.c
  * \brief Debugging support.
  */
-#include "internal.h"
+#include "debug.h"
+#include <stdarg.h>
+#include <string.h>
+#include "phase.h"   /* tm_phase_name[] */
+#include "tm_data.h" /* tm. */
+#include "node.h"    /* tm_node_to_ptr() */
 
 /****************************************************************************/
 /* Names */
@@ -38,6 +43,11 @@ const char *tm_msg_enable_default =
 int tm_msg_enable_all = 0;
 
 
+/*! True if last tm_msg() was disabled; used by tm_msg1() */
+int tm_msg_ignored;
+/*! Table of enabled message types. */
+char tm_msg_enable_table[256];
+
 /*@}*/
 
 /****************************************************************************/
@@ -73,10 +83,10 @@ void tm_msg_enable(const char *codes, int enable)
   for ( r = (const unsigned char *) codes; *r; ++ r ) {
     /* '\1' enables all codes. */
     if ( *r == '\1' ) {
-      memset(tm.msg_enable_table, enable, sizeof(tm.msg_enable_table));
+      memset(tm_msg_enable_table, enable, sizeof(tm_msg_enable_table));
       break;
     } else {
-      tm.msg_enable_table[*r] += enable;
+      tm_msg_enable_table[*r] += enable;
     }
   }
 }
@@ -89,7 +99,7 @@ void tm_msg(const char *format, ...)
   va_list vap;
 
   /* Determine if we need to ignore the msg based on the first char in the format. */
-  if ( (tm.msg_ignored = ! tm.msg_enable_table[(unsigned char) format[0]]) )
+  if ( (tm_msg_ignored = ! tm_msg_enable_table[(unsigned char) format[0]]) )
     return;
 
   /*! Returns if format is empty. */
@@ -104,7 +114,7 @@ void tm_msg(const char *format, ...)
   fprintf(tm_msg_file, "%s%s%c %6lu t#%d[%lu] ",
 	  tm_msg_prefix,
 	  *tm_msg_prefix ? " " : "",
-	  tm_phase_name[tm.p.phase][0], 
+	  ' ', /* tm_phase_name[tm.p.phase][0], */ 
 	  (unsigned long) tm.alloc_id,
 	  tm.alloc_request_type ? tm.alloc_request_type->id : 0,
 	  (unsigned long) tm.alloc_request_size);
@@ -132,7 +142,7 @@ void tm_msg1(const char *format, ...)
   va_list vap;
 
   /* Don't bother if last msg was ignored. */
-  if ( tm.msg_ignored )
+  if ( tm_msg_ignored )
     return;
 
   if ( ! *format )
@@ -210,6 +220,9 @@ void _tm_assert(const char *expr, const char *file, int lineno)
 /**************************************************************************/
 /*! \defgroup validiation Validation */
 /*@{*/
+
+
+int _tm_sweep_is_error;
 
 
 /**
@@ -291,123 +304,12 @@ void tm_validate_lists()
   tm_list_LOOP_END;
 
   /* Validate global node color counters. */
-  tm_assert(n[tm_WHITE] == tm.n[tm_WHITE]);
-  tm_assert(n[tm_ECRU]  == tm.n[tm_ECRU]);
-  tm_assert(n[tm_GREY]  == tm.n[tm_GREY]);
-  tm_assert(n[tm_BLACK] == tm.n[tm_BLACK]);
+  tm_assert(n[WHITE] == tm.n[WHITE]);
+  tm_assert(n[ECRU]  == tm.n[ECRU]);
+  tm_assert(n[GREY]  == tm.n[GREY]);
+  tm_assert(n[BLACK] == tm.n[BLACK]);
   tm_assert(n[tm_TOTAL] == tm.n[tm_TOTAL]);
 }
 
 /*@}*/
 
-/***************************************************************************/
-/* \defgroup error_sweep Error: Sweep */
-/*@{*/
-
-
-#ifndef _tm_sweep_is_error
-/*! If true and sweep occurs, raise a error. */
-int _tm_sweep_is_error = 0;
-#endif
-
-/**
- * Checks for a unexpected node sweep.
- *
- * If a sweep occured at this time,
- * the mark phase created a free tm_node (tm_WHITE) when it should not have.
- *
- * TM failed to mark all tm_nodes as in-use (tm_GREY, or tm_BLACK).
- *
- * This can be considered a bug in:
- * - The write barrier.
- * - Mutators that failed to use the write barrier.
- * - Locating nodes for potential pointers.
- * - Other book-keeping or list management.
- */
-int _tm_check_sweep_error()
-{
-  tm_type *t;
-  tm_node *n;
-
-  /*! OK: A sweep is not considered an error. */
-  if ( ! _tm_sweep_is_error ) {
-    return 0;
-  }
-
-  /*! OK: Nothing was left unmarked. */
-  if ( ! tm.n[tm_ECRU] ) {
-    return 0;
-  }
-
-  /*! ERROR: There were some unmarked (tm_ECRU) tm_nodes. */
-  tm_msg("Fatal %lu dead nodes; there should be no sweeping.\n", tm.n[tm_ECRU]);
-  tm_stop();
-  // tm_validate_lists();
-  
-  /*! Print each unmarked node. */
-  tm_list_LOOP(&tm.types, t);
-  {
-    tm_list_LOOP(&t->color_list[tm_ECRU], n);
-    {
-      tm_assert_test(tm_node_color(n) == tm_ECRU);
-      tm_msg("Fatal node %p color %s size %lu should not be sweeped!\n", 
-	     (void*) n, 
-	     tm_color_name[tm_node_color(n)], 
-	     (unsigned long) t->size);
-      {
-	void ** vpa = tm_node_to_ptr(n);
-	tm_msg("Fatal cons (%d, %p)\n", ((long) vpa[0]) >> 2, vpa[1]);
-      }
-    }
-    tm_list_LOOP_END;
-  }
-  tm_list_LOOP_END;
-  
-  /*! Print stats. */
-  tm_print_stats();
-  
-  /*! Attempt to mark all roots. */
-  _tm_phase_init(tm_ROOT);
-  _tm_root_scan_all();
-  
-  /*! Scan all marked nodes. */
-  _tm_phase_init(tm_SCAN);
-  _tm_node_scan_all();
-  
-  /*! Was there still unmarked nodes? */
-  if ( tm.n[tm_ECRU] ) {
-    tm_msg("Fatal after root mark: still missing %lu references.\n",
-	   (unsigned long) tm.n[tm_ECRU]);
-  } else {
-    tm_msg("Fatal after root mark: OK, missing references found!\n");
-  }
-  
-  /*! Mark all the tm_ECRU nodes tm_BLACK */
-  tm_list_LOOP(&tm.types, t);
-  {
-    tm_list_LOOP(&t->color_list[tm_ECRU], n);
-    {
-      tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
-    }
-    tm_list_LOOP_END;
-  }
-  tm_list_LOOP_END;
-  
-  /*! Start tm_UNMARK phase. */
-  _tm_phase_init(tm_UNMARK);
-  
-  /*! Assert there is no unmarked nodes. */
-  tm_assert_test(tm.n[tm_ECRU] == 0);
-  
-  /*! Stop in debugger? */
-  tm_stop();
-  
-  /*! Clear worst alloc time. */
-  memset(&tm.ts_alloc.tw, 0, sizeof(tm.ts_alloc.tw));
-  
-  /*! Return 1 to signal an error. */
-  return 1;
-}
-
-
-/*@}*/

@@ -103,18 +103,18 @@ void _tm_stack_scan()
 /**
  * Scan all roots.
  */
-void _tm_root_scan_all()
+void tm_root_scan_all()
 {
   int i;
 
-  tm_msg("r G%lu B%lu {\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
+  tm_msg("r G%lu B%lu {\n", tm.n[GREY], tm.n[BLACK]);
   for ( i = 0; tm.roots[i].name; ++ i ) {
     _tm_root_scan_id(i);
   }
   tm.data_mutations = tm.stack_mutations = 0;
   _tm_root_loop_init();
 #if 0
-  tm_msg("r G%lu B%lu }\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
+  tm_msg("r G%lu B%lu }\n", tm.n[GREY], tm.n[BLACK]);
 #endif
 }
 
@@ -127,7 +127,7 @@ int _tm_root_scan_some()
   int result = 1;
   long left = tm_root_scan_some_size;
 
-  tm_msg("r G%lu B%lu {\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
+  tm_msg("r G%lu B%lu {\n", tm.n[GREY], tm.n[BLACK]);
   tm_msg("r [%p,%p] %p(%p) %s\n", 
 	 tm.roots[tm.rooti].l, 
 	 tm.roots[tm.rooti].h,
@@ -167,7 +167,7 @@ int _tm_root_scan_some()
 
  done:
 #if 0
-  tm_msg("r G%lu B%lu }\n", tm.n[tm_GREY], tm.n[tm_BLACK]);
+  tm_msg("r G%lu B%lu }\n", tm.n[GREY], tm.n[BLACK]);
 #endif
 
   return result; /* We're not done. */
@@ -188,135 +188,6 @@ void tm_mark(void *ptr)
 {
   _tm_mark_possible_ptr(ptr);
 }
-
-
-/**
- * Scans a node for internal pointers.
- *
- * If the node's type has user-defined allocation descriptor scan function,
- * call it.
- * Otherwise, scan the entire node's data for potential pointers.
- */
-void _tm_node_scan(tm_node *n)
-{
-  tm_type *type = tm_node_type(n);
-
-  if ( type->desc && type->desc->scan ) {
-    type->desc->scan(type->desc, tm_node_ptr(n));
-  } else {
-    _tm_range_scan(tm_node_ptr(n), tm_node_ptr(n) + type->size);
-  }
-
-  /**
-   * If the node was fully scanned,
-   * Move the tm_GREY node to the marked (tm_BLACK) list.
-   */
-  tm_node_set_color(n, tm_node_to_block(n), tm_BLACK);
-
-#if 0
-  fprintf(stderr, "[B]");
-  fflush(stderr);
-#endif
-}
-
-
-/**
- * Scan node interiors for some pointers.
- *
- * Amount is in pointer-aligned words.
- */
-size_t _tm_node_scan_some(size_t amount)
-{
-  size_t count = 0, bytes = 0;
-#define gi (&tm.node_color_iter[tm_GREY])
-
-  /*! Until amount has been scanned, or nothing is left to scan. */
-  do {
-    tm_node *n;
-
-    /**
-     * If a there is a tm_node region to scan,
-     */
-    if ( gi->scan_ptr ) {
-      /*! Scan until end of tm_node region, */
-      while ( gi->scan_ptr <= gi->scan_end ) {
-	/*! Attempt to mark node at a possible pointer at the scan pointer, */
-	_tm_mark_possible_ptr(* (void **) gi->scan_ptr);
-      
-	/*! And increment the current scan pointer. */
-	gi->scan_ptr += tm_PTR_ALIGN;
-
-	++ count;
-	bytes += tm_PTR_ALIGN;
-
-	/*! Stop scanning if the given amount has been scanned. */
-	if ( -- amount <= 0 ) {
-	  goto done;
-	}
-      }
-
-      /**
-       * If the node was fully scanned,
-       * Move the tm_GREY node to the marked (tm_BLACK) list.
-       */
-      tm_node_set_color(gi->scan_node, tm_node_to_block(gi->scan_node), tm_BLACK);
-
-#if 0
-      fprintf(stderr, "B");
-      fflush(stderr);
-#endif
-
-      /*! Reset scan pointers. */
-      gi->scan_node = 0;
-      gi->scan_ptr = 0;
-      gi->scan_end = 0;
-      gi->scan_size = 0;
-    }
-    /*! Done scanning gi->scan_node. */
-
-    /*! If there is an tm_GREY node, */
-    if ( (n = tm_node_iterator_next(gi)) ) {
-      tm_assert_test(tm_node_color(n) == tm_GREY);
-
-#if 0
-      fprintf(stderr, "s");
-      fflush(stderr);
-#endif
-
-      /**
-       * Schedule the now BLACK node for interior pointer scanning.
-       * Avoid words that overlap the end of the node's data region. 
-       */
-      gi->scan_node = n;
-      gi->scan_ptr  = tm_node_ptr(n);
-      gi->scan_size = gi->type->size;
-      gi->scan_end  = gi->scan_ptr + gi->scan_size - sizeof(void*);
-    } else {
-      goto done;
-    }
-  } while ( amount > 0 );
-
- done:
-#if 0
-  if ( count )
-    tm_msg("M c%lu b%lu l%lu\n", count, bytes, tm.n[tm_GREY]);
-#endif
-
-  /*! Return true if there are remaining tm_GREY nodes or some node is still being scanned. */
-  return tm.n[tm_GREY] || gi->scan_size;
-}
-
-/**
- * Scan until all tm_GREY nodes are tm_BLACK.
- */
-void _tm_node_scan_all()
-{
-  tm_node_LOOP_INIT(tm_GREY);
-  while ( _tm_node_scan_some(~ 0UL) ) {
-  }
-}
-
-#undef gi
 
 
 /*@}*/

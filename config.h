@@ -6,6 +6,7 @@
 #ifndef _tredmill_CONFIG_H
 #define _tredmill_CONFIG_H
 
+#include <limits.h> /* PAGESIZE */
 
 /****************************************************************************/
 /*! \defgroup configuration Configuration */

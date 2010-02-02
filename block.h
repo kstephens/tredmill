@@ -71,9 +71,11 @@ typedef struct tm_block {
   double alignment[0];
 } tm_block;
 
-/*! True if the tm_block has no used nodes; i.e. it can be returned to the OS. */
-#define tm_block_unused(b) ((b)->n[tm_WHITE] == b->n[tm_TOTAL])
 
+/*! True if the tm_block has no used nodes; i.e. it can be returned to the OS. */
+#define tm_block_unused(b) ((b)->n[WHITE] == b->n[tm_TOTAL])
+
+/*! Returns the type of the block. */
 #define tm_block_type(b) ((b)->type)
 
 /*! The begining address of any tm_nodes parcelled from a tm_block. */
@@ -101,7 +103,7 @@ typedef struct tm_block {
    tm_assert_test((b)->guard2 == tm_block_hash(b)); \
    tm_assert_test((b)->begin < (b)->end); \
    tm_assert_test((b)->begin <= (b)->alloc && (b)->alloc <= (b)->end); \
-   tm_assert_test((b)->n[tm_WHITE] + (b)->n[tm_ECRU] + (b)->n[tm_GREY] + (b)->n[tm_BLACK] == (b)->n[tm_TOTAL]); \
+   tm_assert_test((b)->n[WHITE] + (b)->n[ECRU] + (b)->n[GREY] + (b)->n[BLACK] == (b)->n[tm_TOTAL]); \
 } while(0)
 #else
 #define _tm_block_validate(b) ((void) 0)
@@ -115,6 +117,7 @@ tm_block *_tm_block_alloc(size_t size);
 int _tm_block_unparcel_nodes(tm_block *b);
 void _tm_block_reclaim(tm_block *b);
 void _tm_block_sweep_init();
+int tm_block_sweep_some();
 void _tm_block_free(tm_block *b);
 void tm_block_init_node(tm_block *b, tm_node *n);
 

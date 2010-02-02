@@ -1,6 +1,7 @@
 /** \file stats.c
  * \brief Statistics.
  */
+#include <sys/time.h> /* struct timeval */
 #include "internal.h"
 
 /***************************************************************************/
@@ -27,6 +28,22 @@ static __inline double tv_2_double(struct timeval *t)
 
 
 /**
+ * Clear GC stats.
+ */
+void tm_gc_clear_stats()
+{
+  tm.blocks_allocated_since_gc = 0;
+  tm.blocks_in_use_after_gc = tm.n[tm_B];
+
+  tm.nodes_allocated_since_gc = 0;
+  tm.nodes_in_use_after_gc = tm.n[tm_NU] = tm.n[tm_TOTAL] - tm.n[WHITE];
+
+  tm.bytes_allocated_since_gc = 0;
+  tm.bytes_in_use_after_gc = tm.n[tm_b];
+}
+
+
+/**
  * Print utilizations.
  */
 static
@@ -38,7 +55,7 @@ void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size
 
   /* Compute total number of nodes in use. */
   if ( nn > tm_NU ) {
-    n[tm_NU] = n[tm_TOTAL] - n[tm_WHITE];
+    n[tm_NU] = n[tm_TOTAL] - n[WHITE];
     if ( sum && sum != n )
       sum[tm_NU] += n[tm_NU];
   }
@@ -62,7 +79,14 @@ void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size
   }
 
   /* Print fields. */
-  for ( j = 0; j < nn; j ++ ) {
+  for ( j = 0; j < nn && j <= tm_BLACK; j ++ ) {
+    if ( sum && sum != n && j <= tm_B ) {
+      sum[j] += n[j];
+    }
+    tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) n[tm.colors.c[j]]);
+  }
+
+  for (      ; j < nn; j ++ ) {
     if ( sum && sum != n && j <= tm_B ) {
       sum[j] += n[j];
     }
@@ -163,6 +187,7 @@ void tm_print_phase_transition_stats()
   
   // tm_assert(sizeof(tm_phase_name) / sizeof(tm_phase_name[0]) == tm_phase_END + 1);
 
+#if 0
   tm_msg_enable("P", 1);
   tm_msg("P { phase transitions \n");
 
@@ -171,8 +196,10 @@ void tm_print_phase_transition_stats()
     tm_msg1("%-10s ", tm_phase_name[i]);
   }
   tm_msg1("\n");
+#endif
 
 
+#if 0
   for ( i = 0; i <= tm_phase_END; ++ i ) {
     tm_msg("P   %-10s ", tm_phase_name[i]);
     for ( j = 0; j <= tm_phase_END; ++ j ) {
@@ -180,6 +207,7 @@ void tm_print_phase_transition_stats()
     }
     tm_msg1("\n");
   }
+#endif
 
   tm_msg("P }\n");
   tm_msg_enable("P", 0);
@@ -216,7 +244,11 @@ void tm_print_block_stats()
 
       tm_msg("X     b#%d @%p s%lu ", (int) b->id, (void*) b, (unsigned long) b->size);
 
-      for ( j = 0; j < sizeof(b->n)/sizeof(b->n[0]); j ++ ) {
+      for ( j = 0; j <= tm_BLACK; j ++ ) {
+	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[tm.colors.c[j]]);
+      }
+
+      for (      ; j < sizeof(b->n)/sizeof(b->n[0]); j ++ ) {
 	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[j]);
       }
       
@@ -227,7 +259,7 @@ void tm_print_block_stats()
 
       /* Compute block utilization. */
       tm_msg1("(T-W)/b%3d%% ", 
-	      (int) (((b->n[tm_TOTAL] - b->n[tm_WHITE]) * 100) / b->n[tm_CAPACITY])
+	      (int) (((b->n[tm_TOTAL] - b->n[WHITE]) * 100) / b->n[tm_CAPACITY])
 	      );
 	      
       tm_msg1("\n");
@@ -395,11 +427,13 @@ void tm_print_time_stats()
   tm_time_stat_print_(&tm.ts_barrier_root, ~0, 0);
   tm_time_stat_print_(&tm.ts_barrier_black, ~0, 0);
 
+#if 0
   for ( i = 0; 
 	i < (sizeof(tm.p.ts_phase) / sizeof(tm.p.ts_phase[0]));
 	++ i ) {
     tm_time_stat_print_(&tm.p.ts_phase[i], ~0, &tm.p.alloc_by_phase[i]);
   }
+#endif
 
   tm_msg("T }\n");
 

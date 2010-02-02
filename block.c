@@ -5,7 +5,7 @@
  */
 
 #include "internal.h"
-
+#include "tread_inline.h"
 
 /**************************************************/
 /*! \defgroup block Block */
@@ -238,6 +238,46 @@ tm_block *tm_block_scavenge(tm_type *t)
 /**********************************************************/
 /* Block free */
 
+#if 0
+/**
+ * Maybe sweep a tm_block.
+ *
+ * NOT USED!
+ */
+static 
+int _tm_block_sweep_maybe(tm_block *b)
+{
+  return 0;
+}
+#endif
+
+/**
+ * Sweep some blocks.
+ */
+int tm_block_sweep_some()
+{
+  int count = 0;
+  // unsigned long bytes = 0;
+  // int left = tm_block_sweep_some_size;
+
+#if tm_USE_SBRK
+  /*
+  ** Try to sweep last block allocated from OS first
+  ** because we might be able to return it to the OS.
+  */
+#endif
+
+  /*! NOT IMPLEMENTED! */
+
+#if 0
+  if ( count ) 
+    tm_msg("b s b%lu b%lu\n", (unsigned long) count, (unsigned long) bytes);
+#endif
+
+  return count;
+}
+
+
 /**
  * Deletes a WHITE tm_node from a tm_block.
  */
@@ -250,7 +290,7 @@ void _tm_block_delete_node(tm_block *b, tm_node *n)
   // _tm_block_validate(b);
   tm_assert_test(b->type);
   t = b->type;
-  tm_assert_test(nc == tm_WHITE);
+  tm_assert_test(nc == WHITE);
 
   /*! Remove tm_node from tm_type's color list. */
   tm_list_remove(n);
@@ -292,37 +332,37 @@ int _tm_block_unparcel_nodes(tm_block *b)
     /*! Start at first tm_node in tm_block. */
     n = tm_block_node_begin(b);
     while ( (void*) n < tm_block_node_next_parcel(b) ) {
-      /*! Remove node from tm_WHITE list and advance. */
+      /*! Remove node from WHITE list and advance. */
       ++ count;
       bytes += b->size;
 
-      tm_assert_test(tm_node_color(n) == tm_WHITE);
+      tm_assert_test(tm_node_color(n) == WHITE);
       _tm_block_delete_node(b, n);
 
       n = tm_block_node_next(b, n);
     }
   }
 
-  /*! Decrement tm_WHITE and tm_TOTAL counts: */
+  /*! Decrement WHITE and tm_TOTAL counts: */
 
   /*! - Decrement type node counts. */
-  tm_assert_test(t->n[tm_WHITE] >= count);
-  t->n[tm_WHITE] -= count;
+  tm_assert_test(t->n[WHITE] >= count);
+  t->n[WHITE] -= count;
   tm_assert_test(t->n[tm_TOTAL] >= count);
   t->n[tm_TOTAL] -= count;
 
   /*! - Decrement block node counts. */
-  tm_assert_test(b->n[tm_WHITE] >= count);
-  b->n[tm_WHITE] -= count;
-  tm_assert_test(b->n[tm_WHITE] == 0);
+  tm_assert_test(b->n[WHITE] >= count);
+  b->n[WHITE] -= count;
+  tm_assert_test(b->n[WHITE] == 0);
 
   tm_assert_test(b->n[tm_TOTAL] >= count);
   b->n[tm_TOTAL] -= count;
   tm_assert_test(b->n[tm_TOTAL] == 0);
 
   /*! - Decrement global node counts. */
-  tm_assert_test(tm.n[tm_WHITE] >= count);
-  tm.n[tm_WHITE] -= count;
+  tm_assert_test(tm.n[WHITE] >= count);
+  tm.n[WHITE] -= count;
   tm_assert_test(tm.n[tm_TOTAL] >= count);
   tm.n[tm_TOTAL] -= count;
 
@@ -459,28 +499,20 @@ void tm_block_init_node(tm_block *b, tm_node *n)
   /*! Initialize its list pointers. */
   tm_list_init(&n->list);
 
-#if 1
-  tm_assert_test(tm_list_color(&n->list) == tm_WHITE);
-#else
-  /*! Set the tm_node color to tm_WHITE. */
-  tm_list_set_color(n, tm_WHITE);
-#endif
-
-  /*! Increment type node counts. */
-  ++ t->n[tm_TOTAL];
-  ++ t->n[tm_WHITE];
+  /*! Set the tm_node color to WHITE. */
+  tm_list_set_color(n, WHITE);
 
   /*! Increment block node counts */
   ++ b->n[tm_TOTAL];
-  ++ b->n[tm_WHITE];
+  ++ b->n[WHITE];
     
-  /*! Increment global node counts. */
-  ++ tm.n[tm_TOTAL];
-  ++ tm.n[tm_WHITE];
-  
-  /*! Place tm_node on tm_type tm_WHITE list. */
-  tm_node_set_color(n, b, tm_WHITE);
-  
+#if 0
+  /*! Place tm_node on tm_type WHITE list. */
+  tm_node_set_color(n, b, WHITE);
+#else
+  tm_tread_add_white(tm_type_tread(b->type), n);
+#endif
+
   // tm_validate_lists();
 
   // tm_msg("N n%p t%p\n", (void*) n, (void*) t);

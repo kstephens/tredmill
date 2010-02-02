@@ -42,7 +42,7 @@ void tm_write_barrier_node(tm_node *n)
 {
   int c = tm_node_color(n);
 
-  if ( c == tm_GREY ) {
+  if ( c == GREY ) {
     /**
      * If node is tm_GREY,
      * it is already marked for scanning.
@@ -56,16 +56,16 @@ void tm_write_barrier_node(tm_node *n)
      *
      * See _tm_node_scan_some().
      */
-    if ( tm.node_color_iter[tm_GREY].scan_node == n ) {
+    if ( tm.node_color_iter[GREY].scan_node == n ) {
 #if 0
       fprintf(stderr, "*");
       fflush(stderr);
 #endif
       tm.trigger_full_gc = 1;
     }
-  } else if ( c == tm_BLACK ) {
+  } else if ( c == BLACK ) {
     /**
-     * If node is tm_BLACK,
+     * If node is BLACK,
      * The node has already been marked and scanned.
      * The mutator may have introduced new pointers
      * to ECRU nodes.
@@ -76,7 +76,7 @@ void tm_write_barrier_node(tm_node *n)
     tm_time_stat_begin(&tm.ts_barrier_black);
 #endif
 
-    tm_node_set_color(n, tm_node_to_block(n), tm_GREY);
+    tm_node_mutation(n);
 
 #if 0
     fprintf(stderr, "G");
@@ -92,7 +92,7 @@ void tm_write_barrier_node(tm_node *n)
   }
 
   /**
-   * If node is tm_ECRU or tm_WHITE,
+   * If node is ECRU or WHITE,
    * It has not been reached yet.
    */
 }
