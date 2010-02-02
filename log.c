@@ -21,7 +21,18 @@ void tm_alloc_log_init()
     if ( ! tm_alloc_log_fh ) {
       tm_abort();
     }
-    fprintf(tm_alloc_log_fh, "#ID PTR WHITE ECRU GREY BLACK TOTAL BLOCKS FREE_BLOCKS\n");
+    fprintf(tm_alloc_log_fh,
+	    "%6s %12s %6s %6s %6s %6s %6s %6s %6s %6s\n",
+	    "#ID", 
+	    "PTR",
+	    "WHITE",
+	    "ECRU",
+	    "GREY",
+	    "BLACK",
+	    "TOTAL",
+	    "BLOCKS",
+	    "FREE_BLOCKS",
+	    "FLIP");
   }
 }
 
@@ -31,7 +42,7 @@ void tm_alloc_log(void *ptr)
   if ( tm_alloc_log_fh ) {
     if ( log_id ++ % log_ratio == 0 ) {
       fprintf(tm_alloc_log_fh,
-	      "%lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n",  
+	      "%6lu %12lu %6lu %6lu %6lu %6lu %6lu %6lu %6lu %6lu\n",  
 	      (unsigned long) tm.alloc_id,
 	      (unsigned long) ptr,
 	      (unsigned long) tm.n[WHITE],
@@ -40,7 +51,8 @@ void tm_alloc_log(void *ptr)
 	      (unsigned long) tm.n[BLACK],
 	      (unsigned long) tm.n[tm_TOTAL],
 	      (unsigned long) tm.n[tm_B],
-	      (unsigned long) tm.free_blocks_n
+	      (unsigned long) tm.free_blocks_n,
+	      (unsigned long) tm.colors.flip_id
 	      );
     }
 #if 1

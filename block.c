@@ -251,6 +251,7 @@ int _tm_block_sweep_maybe(tm_block *b)
 }
 #endif
 
+
 /**
  * Sweep some blocks.
  */
@@ -502,15 +503,11 @@ void tm_block_init_node(tm_block *b, tm_node *n)
   /*! Set the tm_node color to WHITE. */
   tm_list_set_color(n, WHITE);
 
-  /*! Increment block node counts */
-  ++ b->n[tm_TOTAL];
-  ++ b->n[WHITE];
-    
-#if 0
+#if 1
   /*! Place tm_node on tm_type WHITE list. */
-  tm_node_set_color(n, b, WHITE);
-#else
   tm_tread_add_white(tm_type_tread(b->type), n);
+#else
+  tm_node_set_color(n, b, WHITE);
 #endif
 
   // tm_validate_lists();

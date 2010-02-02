@@ -6,11 +6,37 @@
 #include "tread_inline.h"
 
 
+/**
+ * Scans a node for internal pointers.
+ *
+ * If the node's type has user-defined allocation descriptor scan function,
+ * call it.
+ * Otherwise, scan the entire node's data for potential pointers.
+ */
+void _tm_node_scan(tm_node *n)
+{
+  tm_type *type = tm_node_type(n);
+
+  if ( type->desc && type->desc->scan ) {
+    type->desc->scan(type->desc, tm_node_ptr(n));
+  } else {
+    _tm_range_scan(tm_node_ptr(n), tm_node_ptr(n) + type->size);
+  }
+
+#if 0
+  fprintf(stderr, "[B]");
+  fflush(stderr);
+#endif
+}
+
+
 void tm_node_mutation(tm_node *n)
 {
   tm_block *block = tm_node_to_block(n);
   tm_type *type = tm_block_type(block);
-  tm_tread_mutation(tm_type_tread(type), n);
+  if ( tm_tread_mutation(tm_type_tread(type), n) ) {
+    fprintf(stderr, "*");
+  }
 }
 
 
@@ -33,6 +59,23 @@ void _tm_alloc_scan_any(tm_type *t)
   }
 }
 
+
+static __inline
+void _tm_alloc_scan_all()
+{
+  while ( tm.n[GREY] ) {
+    int i;
+ 
+    for ( i = 0; i < tm.type_id; ++ i ) {
+      tm_tread_scan(tm_type_tread(tm.type_scan));
+    
+      tm.type_scan = tm_list_next(tm.type_scan);
+      if ( (void*) tm.type_scan == (void*) &tm.types ) {
+	tm.type_scan = tm_list_next(tm.type_scan);
+      }
+    }
+  }
+}
 
 static __inline
 void _tm_alloc_flip_all()
@@ -64,6 +107,8 @@ void _tm_alloc_flip_all()
     tm_tread_after_roots(&type->tread);
   }
   tm_list_LOOP_END;
+
+  tm.alloc_since_flip = 0;
 }
 
 
@@ -89,6 +134,7 @@ void *_tm_alloc_type_inner(tm_type *t)
   memset(tm.alloc_n, 0, sizeof(tm.alloc_n));
 
   /*! Keep track of how many allocs since last sweep. */
+  ++ tm.alloc_since_flip;
   ++ tm.alloc_since_sweep;
 
   // tm_validate_lists();
@@ -98,7 +144,22 @@ void *_tm_alloc_type_inner(tm_type *t)
 
   /* BEGIN CRITICAL SECTION */
 
-  /* "Flip" if there are no WHITE and no GREY nodes. */
+  fprintf(stderr, "%lu %lu %lu %lu: %lu %lu\n", 
+	  (unsigned long) tm.n[WHITE],
+	  (unsigned long) tm.n[ECRU],
+	  (unsigned long) tm.n[GREY],
+	  (unsigned long) tm.n[BLACK],
+	  (unsigned long) tm.alloc_since_flip,
+	  (unsigned long) tm.n[tm_TOTAL]);
+
+  if ( ! tm.n[WHITE] ) {
+    if ( tm.alloc_since_flip > tm.n[tm_TOTAL] / 2 ) {
+      fprintf(stderr, "[SCANALL]");
+      _tm_alloc_scan_all();
+    }
+  }
+
+  /* If no GREY nodes, maybe flip? */
   if ( ! tm.n[WHITE] && ! tm.n[GREY] ) {
     _tm_alloc_flip_all();
   }
@@ -121,6 +182,8 @@ void *_tm_alloc_type_inner(tm_type *t)
   }
 
   /* END CRITICAL SECTION */
+
+  fprintf(stderr, "A");
 
 #if tm_ptr_to_node_TEST
   /* Validate tm_ptr_to_node() */

@@ -372,11 +372,11 @@ int tm_type_parcel_or_alloc_node(tm_type *t)
 {
   int count;
 
-  count = tm_type_parcel_some_nodes(t, tm_node_parcel_some_size);
+  count = tm_type_parcel_some_nodes(t, 1); // tm_node_parcel_some_size);
   if ( ! count ) {
     if ( ! _tm_type_alloc_block(t) )
       return 0;
-    count = tm_type_parcel_some_nodes(t, tm_node_parcel_some_size);
+    count = tm_type_parcel_some_nodes(t, 1); // tm_node_parcel_some_size);
   }
 
   /*! Return the number of tm_node parcelled. */

@@ -199,6 +199,9 @@ struct tm_data {
   /*! Allocations since sweep. */
   size_t alloc_since_sweep;
 
+  /*! Allocations since flip. */
+  size_t alloc_since_flip;
+
   /*! Current allocation request size. */
   size_t alloc_request_size;
   /*! Current allocation request type. */

@@ -102,6 +102,11 @@ typedef struct tm_colors {
    * c1[tm_list_color(node)].
    */
   tm_color c1[tm_TOTAL];
+
+  /**
+   * The flip id.
+   */
+  unsigned long flip_id;
 } tm_colors;
 
 
@@ -112,6 +117,7 @@ void tm_colors_init(tm_colors *c)
   c->c[tm_ECRU]  = c->c1[tm_ECRU]  = tm_ECRU;
   c->c[tm_GREY]  = c->c1[tm_GREY]  = tm_GREY;
   c->c[tm_BLACK] = c->c1[tm_BLACK] = tm_BLACK;
+  c->flip_id = 0;
 }
 
 /**
@@ -132,6 +138,8 @@ void tm_colors_flip(tm_colors *c)
   c->c1[c->c[tm_ECRU]]  = tm_ECRU;
   c->c1[c->c[tm_GREY]]  = tm_GREY;
   c->c1[c->c[tm_BLACK]] = tm_BLACK;
+
+  ++ c->flip_id;
 }
 
 /*@}*/

@@ -2,7 +2,7 @@ reset
 set style function lines
 set size   1.0, 1.0
 set origin 0.0, 0.0
-set multiplot layout 4, 1
+set multiplot layout 5, 1
 
 # set border 0
 set xtics out 
@@ -35,6 +35,9 @@ plot "/tmp/tm_alloc.log" \
 plot "/tmp/tm_alloc.log" \
         using 1:9          title "Free Blocks"      with points pointtype 7 pointsize .001, \
      '' using 1:8          title "Blocks"           with points pointtype 7 pointsize .001
+
+plot "/tmp/tm_alloc.log" \
+        using 1:10         title "Flip"      with points pointtype 7 pointsize .001
 
 #replot
 unset multiplot
