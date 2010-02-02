@@ -748,6 +748,7 @@ tm_block *_tm_block_alloc(size_t size)
 }
 
 
+#if 0
 /**
  * Scavenges all tm_types for an unused tm_block.
  *
@@ -777,6 +778,7 @@ tm_block *tm_block_scavenge(tm_type *t)
 
   return 0;
 }
+#endif
 
 
 /**********************************************************/
@@ -1566,6 +1568,7 @@ void _tm_node_sweep_all()
 /*@{*/
 
 
+#if 0
 /**
  * Maybe sweep a tm_block.
  *
@@ -1576,7 +1579,7 @@ int _tm_block_sweep_maybe(tm_block *b)
 {
   return 0;
 }
-
+#endif
 
 /**
  * Sweep some blocks.
@@ -1585,8 +1588,8 @@ static
 int _tm_block_sweep_some()
 {
   int count = 0;
-  unsigned long bytes = 0;
-  int left = tm_block_sweep_some_size;
+  // unsigned long bytes = 0;
+  // int left = tm_block_sweep_some_size;
 
 #if tm_USE_SBRK
   /*
@@ -2071,8 +2074,7 @@ void *_tm_alloc_type_inner(tm_type *t)
 		(unsigned long) tm.n[tm_TOTAL],
 		(unsigned long) tm.phase,
 		(unsigned long) tm.n[tm_B],
-		(unsigned long) tm.free_blocks_n,
-		0
+		(unsigned long) tm.free_blocks_n
 		);
       }
       if ( log_ratio < 1000 && log_id / log_ratio > 100 ) {

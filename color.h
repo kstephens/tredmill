@@ -24,11 +24,11 @@ typedef enum tm_color {
   /*! Free, in free list. */
   tm_WHITE,
   /*! Allocated. */
-  tm_ECRU_,
+  tm_ECRU,
   /*! Marked in use, scheduled for interior scanning. */
   tm_GREY,
   /*! Marked in use, scanned. */
-  tm_BLACK_,        
+  tm_BLACK,        
 
   /*! Accounting */
 
@@ -75,11 +75,32 @@ typedef enum tm_color {
 
 } tm_color;
 
+/**
+ * Keeps track of current color mappings.
+ *
+ * When the treads are "flipped" colors change.
+ *
+ * Rather than altering all the actual colors of the all the nodes,
+ * remap the colors logically.
+ */
+typedef struct tm_colors {
+  /**
+   * Forward color mappings.
+   *
+   * c[tm_BLACK] maps to the actual tm_list_color() of the nodes.
+   */
+  tm_color c[tm_TOTAL];
 
-extern int _tm_ECRU, _tm_BLACK, _tm_alloc_color;
+  /**
+   * Inverse color mappings.
+   *
+   * c1[tm_list_color(node)] => 
+   */
+  tm_color c1[tm_TOTAL];
+} tm_colors;
 
-#define tm_ECRU _tm_ECRU
-#define tm_BLACK _tm_BLACK
+
+extern int _tm_alloc_color;
 
 /*@}*/
 

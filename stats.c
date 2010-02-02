@@ -72,7 +72,6 @@ void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size
   tm_msg1("\n");
 }
 
-
 /**
  * API: Print statistics.
  */

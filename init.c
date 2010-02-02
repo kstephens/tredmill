@@ -61,10 +61,10 @@ int tm_stack_growth(char *ptr, int depth)
 }
 
 
-int _tm_ECRU = tm_ECRU_;
-int _tm_BLACK = tm_BLACK_;
-int _tm_alloc_color = tm_ECRU_;
+int _tm_alloc_color = tm_ECRU;
 
+
+static void _tm_block_sweep_init();
 
 /**
  * API: Initialize the tm allocator.
@@ -85,10 +85,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   tm_assert(sizeof(unsigned long) == sizeof(void *));
 
-  /*! Initialize ECRU and BLACK codes. */
-  _tm_ECRU = tm_ECRU_;
-  _tm_BLACK = tm_BLACK_;
-  _tm_alloc_color = tm_ECRU_;
+  /*! Initialize allocation colors. */
+  _tm_alloc_color = tm_ECRU;
 
   /*! Initialize time stat names. */
   tm.ts_os_alloc.name = "tm_os_alloc";

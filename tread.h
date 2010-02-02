@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "list.h"
 #include "node.h"
 #include <assert.h>
@@ -95,14 +96,6 @@ void tm_tread_init(tm_tread *t)
 #define ECRU  t->c[tm_ECRU]
 #define GREY  t->c[tm_GREY]
 #define BLACK t->c[tm_BLACK]
-
-
-static __inline
-void tm_tread_fix_pointers(tm_tread *t, tm_node *n)
-{
-  /* We thus have the pointers and segments in the following cyclic order: bottom, ecru, top, grey, scan, black, free, white, bottom. */
-  int c = t->c1[tm_node_color(n)];
-}
 
 
 static __inline
