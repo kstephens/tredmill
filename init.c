@@ -82,6 +82,9 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 
   tm_assert(sizeof(unsigned long) == sizeof(void *));
 
+  /*! Initialize colors. */
+  tm_colors_init(&tm.colors);
+
   /*! Initialize allocation colors. */
   tm.alloc_color = tm_ECRU;
 

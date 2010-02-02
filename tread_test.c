@@ -1,3 +1,4 @@
+#define tm_tread_UNIT_TEST 1
 #include "tread.h"
 
 #include <stdio.h>
@@ -8,6 +9,7 @@ void render_dot(tm_tread *t, tm_node *mark, const char *desc);
 #define N 60
 static int seed;
 static int nodes_parceled = 0;
+static tm_colors colors;
 static tm_node nodes[N];
 static tm_tread _t, *t = &_t;
 
@@ -164,7 +166,9 @@ int main(int argc, char **argv)
   }
   srand(seed);
 
+  tm_colors_init(&colors);
   tm_tread_init(t);
+  t->c = &colors;
   render_dot(t, 0, "initialized");
 
   for ( i = 0; i < 2; ++ i ) {

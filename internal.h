@@ -77,6 +77,9 @@ struct tm_data {
   /*! The current processing phase. */
   enum tm_phase phase, next_phase;
 
+  /*! The current colors. */
+  tm_colors colors;
+
   /*! The color of newly allocated nodes. */
   int alloc_color;
 

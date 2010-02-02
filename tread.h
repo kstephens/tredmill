@@ -7,17 +7,8 @@
 #include <unistd.h>
 #include "list.h"
 #include "node.h"
+#include "color.h"
 #include <assert.h>
-
-
-typedef enum tm_color {
-  tm_WHITE = 0,
-  tm_ECRU,
-  tm_GREY,
-  tm_BLACK,
-  tm_TOTAL,
-  tm_LAST,
-} tm_color;
 
 
 /**
@@ -53,19 +44,15 @@ struct tm_tread {
   tm_node *scan;
 
   /**
-   * Current counts of nodes by color.
+   * Current count of nodes by color.
+   * Include total node count at n[tm_TOTAL].
    */
-  size_t  n[tm_LAST];
+  size_t  n[tm__LAST];
 
   /**
    * Current color mapping.
    */
-  int c[4];
-
-  /**
-   * Inverse color mapping.
-   */
-  int c1[4];
+  tm_colors *c;
 } tm_tread;
 
 
@@ -83,19 +70,13 @@ static __inline
 void tm_tread_init(tm_tread *t)
 {
   t->free = t->bottom = t->top = t->scan = 0;
-  t->c[tm_WHITE] = tm_WHITE;
-  t->c[tm_ECRU]  = tm_ECRU;
-  t->c[tm_GREY]  = tm_GREY;
-  t->c[tm_BLACK] = tm_BLACK;
-
-  memcpy(t->c1, t->c, sizeof(t->c1));
 }
 
 
-#define WHITE t->c[tm_WHITE]
-#define ECRU  t->c[tm_ECRU]
-#define GREY  t->c[tm_GREY]
-#define BLACK t->c[tm_BLACK]
+#define WHITE t->c->c[tm_WHITE]
+#define ECRU  t->c->c[tm_ECRU]
+#define GREY  t->c->c[tm_GREY]
+#define BLACK t->c->c[tm_BLACK]
 
 
 static __inline
@@ -232,8 +213,12 @@ void tm_tread_flip(tm_tread *t)
 #if 0
   fprintf(stderr, "   before flip\n\t n  %d %d %d %d %d\n\tc  %d %d %d %d\n\tc1 %d %d %d %d\n",
 	  t->n[0], t->n[1], t->n[2], t->n[3], t->n[4],
-	  t->c[0], t->c[1], t->c[2], t->c[3],
-	  t->c1[0], t->c1[1], t->c1[2], t->c1[3]);
+	  t->c->c[0], t->c->c[1], t->c->c[2], t->c->c[3],
+	  t->c->c1[0], t->c->c1[1], t->c->c1[2], t->c->c1[3]);
+#endif
+
+#ifdef tm_tread_UNIT_TEST
+  tm_colors_flip(t->c);
 #endif
 
   /* Swap bottom and top. */
@@ -245,27 +230,11 @@ void tm_tread_flip(tm_tread *t)
     t->top = p;
   }
 
-  /* Rotate colors: WHITE, ECRU, BLACK = ECRU, BLACK, GREY */
-  {
-    int tmp;
-
-    tmp = WHITE;
-    WHITE = ECRU;
-    ECRU = BLACK;
-    BLACK = GREY;
-    GREY = tmp;
-  }
-
-  t->c1[WHITE] = tm_WHITE;
-  t->c1[ECRU]  = tm_ECRU;
-  t->c1[GREY]  = tm_GREY;
-  t->c1[BLACK] = tm_BLACK;
-
 #if 0
   fprintf(stderr, "   flipped\n\t n  %d %d %d %d %d\n\tc  %d %d %d %d\n\tc1 %d %d %d %d\n",
 	  t->n[0], t->n[1], t->n[2], t->n[3], t->n[4],
-	  t->c[0], t->c[1], t->c[2], t->c[3],
-	  t->c1[0], t->c1[1], t->c1[2], t->c1[3]);
+	  t->c->c[0], t->c->c[1], t->c->c[2], t->c->c[3],
+	  t->c->c1[0], t->c->c1[1], t->c->c1[2], t->c->c1[3]);
 #endif 
 
   /* Force marking to occur before WHITE. */

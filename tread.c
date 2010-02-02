@@ -1,6 +1,7 @@
 #include "tread.h"
 
 
+static
 const char *__tm_color_name[] = { 
   "WHITE",
   "ECRU",
@@ -57,7 +58,7 @@ void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_
   if ( first ) {
     node = first;
     do {
-      int c = t->c1[tm_node_color(node)];
+      int c = t->c->c1[tm_node_color(node)];
       next = tm_node_next(node);
       int i, marked = 0;
       for ( i = 0; i < markn; ++ i ) {
@@ -83,11 +84,11 @@ void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_
   }
 
   fprintf(fp, "\"free\"   [ shape=box, label=\"free: %d\" ];\n",
-	  (int) t->n[t->c[tm_WHITE]]);
+	  (int) t->n[t->c->c[tm_WHITE]]);
   fprintf(fp, "\"bottom\" [ shape=box ];\n");
   fprintf(fp, "\"top\"    [ shape=box ];\n");
   fprintf(fp, "\"scan\"   [ shape=box, label=\"scan: %d\" ];\n",
-	  (int) t->n[t->c[tm_GREY]]);
+	  (int) t->n[t->c->c[tm_GREY]]);
 
   if ( first ) {
     node = first;

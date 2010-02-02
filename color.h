@@ -94,11 +94,40 @@ typedef struct tm_colors {
   /**
    * Inverse color mappings.
    *
-   * c1[tm_list_color(node)] => 
+   * c1[tm_list_color(node)].
    */
   tm_color c1[tm_TOTAL];
 } tm_colors;
 
+
+static __inline
+void tm_colors_init(tm_colors *c)
+{
+  c->c[tm_WHITE] = c->c1[tm_WHITE] = tm_WHITE;
+  c->c[tm_ECRU]  = c->c1[tm_ECRU]  = tm_ECRU;
+  c->c[tm_GREY]  = c->c1[tm_GREY]  = tm_GREY;
+  c->c[tm_BLACK] = c->c1[tm_BLACK] = tm_BLACK;
+}
+
+/**
+ * Rotate colors: WHITE, ECRU, BLACK = ECRU, BLACK, GREY.
+ */
+static __inline
+void tm_colors_flip(tm_colors *c)
+{
+  int tmp;
+  
+  tmp = c->c[tm_WHITE];
+  c->c[tm_WHITE] = c->c[tm_ECRU];
+  c->c[tm_ECRU]  = c->c[tm_BLACK];
+  c->c[tm_BLACK] = c->c[tm_GREY];
+  c->c[tm_GREY]  = tmp;
+
+  c->c1[c->c[tm_WHITE]] = tm_WHITE;
+  c->c1[c->c[tm_ECRU]]  = tm_ECRU;
+  c->c1[c->c[tm_GREY]]  = tm_GREY;
+  c->c1[c->c[tm_BLACK]] = tm_BLACK;
+}
 
 /*@}*/
 
