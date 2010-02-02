@@ -1233,7 +1233,11 @@ void tm_type_init(tm_type *t, size_t size)
   /*! Initialize the tm_types.blocks list. */
   tm_list_init(&t->blocks);
   tm_list_set_color(&t->blocks, tm_LIVE_BLOCK);
-  
+
+  /*! Initialize the type's tread. */
+  tm_tread_init(&t->tread);
+  t->tread.c = &tm.colors;
+
   /*! Initialize the tm_type node counts. */
   memset(t->n, 0, sizeof(t->n));
   

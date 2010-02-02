@@ -70,13 +70,17 @@ static __inline
 void tm_tread_init(tm_tread *t)
 {
   t->free = t->bottom = t->top = t->scan = 0;
+  memset(t->n, 0, sizeof(t->n));
+  t->c = 0;
 }
 
 
+#if 0
 #define WHITE t->c->c[tm_WHITE]
 #define ECRU  t->c->c[tm_ECRU]
 #define GREY  t->c->c[tm_GREY]
 #define BLACK t->c->c[tm_BLACK]
+#endif
 
 
 static __inline
@@ -88,17 +92,17 @@ void tm_tread_add_white(tm_tread *t, tm_node *n)
   }
   else {
     tm_list_append(t->bottom, n);
-    if ( ! t->n[WHITE] ) {
+    if ( ! t->n[t->c->c[tm_WHITE]] ) {
       t->free = n;
     }
   }
-  tm_list_set_color(n, WHITE);
-  ++ t->n[WHITE];
+  tm_list_set_color(n, t->c->c[tm_WHITE]);
+  ++ t->n[t->c->c[tm_WHITE]];
   ++ t->n[tm_TOTAL];
 
 
 #if 0
-  if ( t->n[WHITE] == 2 ) {
+  if ( t->n[t->c->c[tm_WHITE]] == 2 ) {
     assert(tm_node_next(t->free) == t->bottom);
     assert(tm_node_prev(t->free) == t->bottom);
     assert(tm_node_next(t->bottom) == t->free);
@@ -115,25 +119,25 @@ tm_node *tm_tread_allocate(tm_tread *t)
 
   tm_tread_scan(t);
 
-  if ( ! t->n[WHITE] && ! t->n[GREY] ) {
+  if ( ! t->n[t->c->c[tm_WHITE]] && ! t->n[t->c->c[tm_GREY]] ) {
     tm_tread_flip(t);
   }
   
-  if ( ! t->n[WHITE] ) {
+  if ( ! t->n[t->c->c[tm_WHITE]] ) {
     tm_tread_more_white(t);
   }
 
-  if ( ! t->n[WHITE] ) {
+  if ( ! t->n[t->c->c[tm_WHITE]] ) {
     return 0;
   }
 
   n = t->free;
   t->free = tm_list_next(t->free);
 
-  tm_list_set_color(n, BLACK);
+  tm_list_set_color(n, t->c->c[tm_BLACK]);
 
-  -- t->n[WHITE];
-  ++ t->n[BLACK];
+  -- t->n[t->c->c[tm_WHITE]];
+  ++ t->n[t->c->c[tm_BLACK]];
 
   return n;
 }
@@ -142,8 +146,8 @@ tm_node *tm_tread_allocate(tm_tread *t)
 static __inline
 void tm_tread_mark(tm_tread *t, tm_node *n)
 {
-  assert(tm_node_color(n) != WHITE);
-  if ( tm_node_color(n) != ECRU ) {
+  assert(tm_node_color(n) != t->c->c[tm_WHITE]);
+  if ( tm_node_color(n) != t->c->c[tm_ECRU] ) {
     if ( t->top == n ) {
       t->top = tm_node_prev(n);
     } else {
@@ -151,14 +155,14 @@ void tm_tread_mark(tm_tread *t, tm_node *n)
       tm_list_insert(t->top, n);
     }
 
-    tm_list_set_color(n, GREY);
+    tm_list_set_color(n, t->c->c[tm_GREY]);
 
-    if ( ! t->n[GREY] ) {
+    if ( ! t->n[t->c->c[tm_GREY]] ) {
       t->scan = n;
     }
 
-    -- t->n[ECRU];
-    ++ t->n[GREY];
+    -- t->n[t->c->c[tm_ECRU]];
+    ++ t->n[t->c->c[tm_GREY]];
   }
 }
 
@@ -171,9 +175,9 @@ void tm_tread_scan(tm_tread *t)
   tm_node *n = t->scan;
   if ( t->scan != t->top ) {
     t->scan = tm_node_prev(t->scan);
-    tm_list_set_color(n, BLACK);
-    -- t->n[GREY];
-    ++ t->n[BLACK];
+    tm_list_set_color(n, t->c->c[tm_BLACK]);
+    -- t->n[t->c->c[tm_GREY]];
+    ++ t->n[t->c->c[tm_BLACK]];
   }
 }
 
@@ -182,7 +186,7 @@ void tm_tread_scan(tm_tread *t)
 static __inline
 void tm_tread_mutation(tm_tread *t, tm_node *n)
 {
-  if ( tm_node_color(n) == BLACK ) {
+  if ( tm_node_color(n) == t->c->c[tm_BLACK] ) {
     if ( t->top == n ) {
       t->top = tm_node_prev(n);
     } else {
@@ -190,14 +194,14 @@ void tm_tread_mutation(tm_tread *t, tm_node *n)
       tm_list_insert(t->top, n);
     }
 
-    tm_list_set_color(n, GREY);
+    tm_list_set_color(n, t->c->c[tm_GREY]);
 
-    if ( ! t->n[GREY] ) {
+    if ( ! t->n[t->c->c[tm_GREY]] ) {
       t->scan = n;
     }
 
-    -- t->n[BLACK];
-    ++ t->n[GREY];
+    -- t->n[t->c->c[tm_BLACK]];
+    ++ t->n[t->c->c[tm_GREY]];
   }
 }
 
@@ -238,7 +242,7 @@ void tm_tread_flip(tm_tread *t)
 #endif 
 
   /* Force marking to occur before WHITE. */
-  if ( tm_node_color(t->top) == WHITE ) {
+  if ( tm_node_color(t->top) == t->c->c[tm_WHITE] ) {
     t->top = tm_node_prev(t->top);
   }
 
@@ -249,12 +253,12 @@ void tm_tread_flip(tm_tread *t)
   tm_tread_mark_roots(t);
 
   /* Do not allocate into WHITE. */
-  if ( tm_node_color(t->bottom) == WHITE ) {
+  if ( tm_node_color(t->bottom) == t->c->c[tm_WHITE] ) {
     t->bottom = tm_node_next(t->bottom);
   }
 
   /* If there was no WHITE, assume more_white(). */
-  if ( ! t->n[WHITE] ) {
+  if ( ! t->n[t->c->c[tm_WHITE]] ) {
     t->bottom = t->free = tm_node_next(t->scan);
   }
 

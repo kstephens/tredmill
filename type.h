@@ -7,6 +7,7 @@
 #define _tredmill_TYPE_H
 
 #include "tredmill/list.h"
+#include "tredmill/tread.h"
 
 
 /****************************************************************************/
@@ -46,6 +47,9 @@ typedef struct tm_type {
 
   /*! Number of nodes, indexed by tm_color: includes tm_TOTAL, tm_B, tm_NU, tm_b, tm_b_NU stats. */        
   size_t n[tm__LAST2];
+
+  /*! The tread for this type. */
+  tm_tread tread;
 
   /*! Lists of node by color; see tm_node.list. */
   tm_list color_list[tm_TOTAL];

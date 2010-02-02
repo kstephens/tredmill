@@ -23,7 +23,7 @@ void tm_tread_mark_roots(tm_tread *t)
   for ( j = 0; j < 4; ++ j ) {
     int i = rand() % nodes_parceled;
     tm_node *n = &nodes[i];
-    if ( tm_node_color(n) == ECRU ) {
+    if ( tm_node_color(n) == t->c->c[tm_ECRU] ) {
       // fprintf(stderr, "    %p\n", (void*) n);
       tm_tread_mark(t, n);
       // render_dot(t, n, "mark root @ ");
@@ -37,7 +37,7 @@ void tm_node_scan(tm_node *n)
   if ( (((unsigned long) n) / sizeof(tm_node)) % 2 == 0 ) {
     int i = rand() % nodes_parceled;
     tm_node *r = &nodes[i];
-    if ( tm_node_color(r) == ECRU ) {
+    if ( tm_node_color(r) == t->c->c[tm_ECRU] ) {
       // fprintf(stderr, "    %p => %p\n", (void*) n, (void*) r);
       tm_tread_mark(t, r);
     }
@@ -136,7 +136,7 @@ void render_dot(tm_tread *t, tm_node *mark, const char *desc)
 	  "%s",
 	  filename_html,
 	  filename_html, seed,
-	  t->n[WHITE], t->n[ECRU], t->n[GREY], t->n[BLACK], t->n[tm_TOTAL],
+	  t->n[t->c->c[tm_WHITE]], t->n[t->c->c[tm_ECRU]], t->n[t->c->c[tm_GREY]], t->n[t->c->c[tm_BLACK]], t->n[tm_TOTAL],
 	  filename_i - 1,
 	  filename_i,
 	  filename_i + 1,
@@ -185,7 +185,7 @@ int main(int argc, char **argv)
     if ( rand() % 2 == 0 ) {
       int i = rand() % nodes_parceled;
       tm_node *r = &nodes[i];
-      if ( tm_node_color(r) != WHITE ) {
+      if ( tm_node_color(r) != t->c->c[tm_WHITE] ) {
 	tm_tread_mutation(t, r);
 	render_dot(t, r, "mutation @ ");
       }
