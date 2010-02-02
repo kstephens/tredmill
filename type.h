@@ -73,6 +73,9 @@ struct tm_block * _tm_type_alloc_block(tm_type *t);
 void _tm_type_add_block(tm_type *t, struct tm_block *b);
 void _tm_type_remove_block(tm_type *t, struct tm_block *b);
 
+int tm_type_parcel_or_alloc_node(tm_type *t);
+int tm_type_parcel_some_nodes(tm_type *t, long left);
+
 /*@}*/
 
 #endif

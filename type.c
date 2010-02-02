@@ -56,9 +56,6 @@ void tm_type_init(tm_type *t, size_t size)
 }
 
 
-extern 
-int _tm_node_parcel_or_alloc(tm_type *t);
-
 /**
  * Returns a new tm_type for a given size.
  */
@@ -87,7 +84,7 @@ tm_type *tm_type_new(size_t size)
    *
    * Assume this is being called because an tm_alloc() is envitable.
    */
-  _tm_node_parcel_or_alloc(t);
+  tm_type_parcel_or_alloc_node(t);
 
   return t;
 }
@@ -320,6 +317,119 @@ void _tm_type_remove_block(tm_type *t, tm_block *b)
 
   /*! Dissassociate tm_block with the tm_type. */
   b->type = 0;
+}
+
+
+/**
+ * Parcel some nodes from an existing tm_block,
+ * or allocate a new tm_block and try again.
+ */
+int tm_type_parcel_or_alloc_node(tm_type *t)
+{
+  int count;
+
+  count = tm_type_parcel_some_nodes(t, tm_node_parcel_some_size);
+  if ( ! count ) {
+    if ( ! _tm_type_alloc_block(t) )
+      return 0;
+    count = tm_type_parcel_some_nodes(t, tm_node_parcel_some_size);
+  }
+
+  /*! Return the number of tm_node parcelled. */
+  return count;
+}
+
+
+/**
+ * Parcel some nodes for a tm_type from a tm_block
+ * already allocated from the OS.
+ */
+int tm_type_parcel_some_nodes(tm_type *t, long left)
+{
+  int count = 0;
+  size_t bytes = 0;
+  tm_block *b;
+  
+  ++ tm.parceling;
+
+  /**
+   * If a tm_block is already scheduled for parceling, parcel from it.
+   * Otherwise, try to allocate a block from the free list and schedule it for parceling.
+   */
+  if ( ! t->parcel_from_block ) {
+    if ( (b = _tm_block_alloc_from_free_list(tm_block_SIZE)) ) {
+      _tm_type_add_block(t, b);
+    } else {
+      goto done;
+    }
+  }
+
+  b = t->parcel_from_block;
+
+  // _tm_block_validate(b);
+  
+  {
+    /*! Until end of tm_block parcel space is reached, */
+    void *pe = tm_block_node_begin(b);
+    
+    while ( (pe = tm_block_node_next(b, tm_block_node_next_parcel(b))) 
+	    <= tm_block_node_end(b)
+	    ) {
+      tm_node *n;
+        
+      // _tm_block_validate(b);
+      
+      /*! Parcel a tm_node from the tm_block. */
+      n = tm_block_node_next_parcel(b);
+      
+      /*! Increment tm_block parcel pointer. */
+      b->next_parcel = pe;
+      
+      /*! Update global valid node pointer range. */
+      {
+	void *ptr;
+
+	if ( tm_ptr_l > (ptr = tm_node_ptr(n)) ) {
+	  tm_ptr_l = ptr;
+	}
+	if ( tm_ptr_h < (ptr = pe) ) {
+	  tm_ptr_h = ptr;
+	}
+      }
+  
+      /*! Initialize the tm_node. */
+      tm_block_init_node(b, n);
+
+      tm_assert_test(tm_node_color(n) == tm_WHITE);
+
+      /*! Update local accounting. */
+      ++ count;
+      bytes += t->size;
+      
+      /*! If enough nodes have been parceled, stop. */
+      if ( -- left <= 0 ) {
+	goto done;
+      }
+    }
+    
+    /** 
+     * If the end of the tm_block was reached,
+     * Force a new tm_block allocation next time. 
+     */
+    t->parcel_from_block = 0;
+  }
+
+  done:
+
+  -- tm.parceling;
+
+#if 0
+  if ( count )
+    tm_msg("N i n%lu b%lu t%lu\n", count, bytes, t->n[tm_WHITE]);
+#endif
+
+  /*! Return the number of tm_nodes actually allocated. */
+  return count;
 }
 
 

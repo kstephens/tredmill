@@ -116,6 +116,8 @@ int _tm_block_unparcel_nodes(tm_block *b);
 void _tm_block_reclaim(tm_block *b);
 void _tm_block_sweep_init();
 void _tm_block_free(tm_block *b);
+void tm_block_init_node(tm_block *b, tm_node *n);
+
 
 /*@}*/
 

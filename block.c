@@ -202,6 +202,7 @@ void _tm_block_sweep_init()
 #endif
 }
 
+
 #if 0
 /**
  * Scavenges all tm_types for an unused tm_block.
@@ -438,6 +439,51 @@ void _tm_block_free(tm_block *b)
   // tm_msg("b f b%p\n", (void*) b);
 
   /*! Return. */
+}
+
+
+/**
+ * Initialize a tm_node from a tm_block.
+ */
+void tm_block_init_node(tm_block *b, tm_node *n)
+{
+  tm_type *t;
+
+  tm_assert_test(b);
+  // _tm_block_validate(b);
+  tm_assert_test(b->type);
+
+  /*! Set the tm_block.type. */
+  t = b->type;
+
+  /*! Initialize its list pointers. */
+  tm_list_init(&n->list);
+
+#if 1
+  tm_assert_test(tm_list_color(&n->list) == tm_WHITE);
+#else
+  /*! Set the tm_node color to tm_WHITE. */
+  tm_list_set_color(n, tm_WHITE);
+#endif
+
+  /*! Increment type node counts. */
+  ++ t->n[tm_TOTAL];
+  ++ t->n[tm_WHITE];
+
+  /*! Increment block node counts */
+  ++ b->n[tm_TOTAL];
+  ++ b->n[tm_WHITE];
+    
+  /*! Increment global node counts. */
+  ++ tm.n[tm_TOTAL];
+  ++ tm.n[tm_WHITE];
+  
+  /*! Place tm_node on tm_type tm_WHITE list. */
+  tm_node_set_color(n, b, tm_WHITE);
+  
+  // tm_validate_lists();
+
+  // tm_msg("N n%p t%p\n", (void*) n, (void*) t);
 }
 
 
