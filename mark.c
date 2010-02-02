@@ -190,9 +190,22 @@ void tm_mark(void *ptr)
 }
 
 
+/**
+ * Scans a node for internal pointers.
+ *
+ * If the node's type has user-defined allocation descriptor scan function,
+ * call it.
+ * Otherwise, scan the entire node's data for potential pointers.
+ */
 void _tm_node_scan(tm_node *n)
 {
-  _tm_range_scan(tm_node_ptr(n), tm_node_ptr(n) + tm_node_type(n)->size);
+  tm_type *type = tm_node_type(n);
+
+  if ( type->desc && type->desc->scan ) {
+    type->desc->scan(type->desc, tm_node_ptr(n));
+  } else {
+    _tm_range_scan(tm_node_ptr(n), tm_node_ptr(n) + type->size);
+  }
 
   /**
    * If the node was fully scanned,

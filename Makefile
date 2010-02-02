@@ -98,7 +98,7 @@ GARBAGE_DIRS += doc/latex
 TESTS = test1 test2 test3 test4 test5 test6 test7 test8 test9
 test: all run-tests
 
-run-test : tmtest-run tread_test-run 
+run-test : tread_test-run tmtest-run 
 
 tmtest-run : mak_gen/Linux/t/tmtest
 	for t in $(TESTS) ;\

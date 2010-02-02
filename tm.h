@@ -44,11 +44,21 @@
  * Allocation descriptor.
  *
  * Specifies a user-defined handle for requesting allocations of a particular type and size.
+ *
+ * Can also define scan functions for a particular type.
  */
 typedef struct tm_adesc {
-  size_t size;  /*!< Size of all objects allocated. */
-  void *opaque; /*!< User-specified data. */
-  void *hidden; /*!< tm_type handle. */
+  /*! Size of all objects allocated. */
+  size_t size; 
+
+  /*! User-specified data. */ 
+  void *opaque;
+
+  /*! Scan function. */
+  void (*scan)(struct tm_adesc *adesc, void *node_ptr);
+
+  /*! tm_type handle. */
+  void *hidden;
 } tm_adesc;
 
 /*! ???? */
