@@ -149,6 +149,9 @@ void tm_tread_mark(tm_tread *t, tm_node *n)
 {
   assert(tm_node_color(n) != t->c->c[tm_WHITE]);
   if ( tm_node_color(n) == t->c->c[tm_ECRU] ) {
+    if ( t->bottom == n ) {
+      t->bottom = tm_node_next(n);
+    }
     if ( t->top == n ) {
       t->top = tm_node_prev(n);
     } else {
@@ -248,16 +251,16 @@ void tm_tread_flip(tm_tread *t)
     t->top = tm_node_prev(t->top);
   }
 
+  /* Do not allocate into WHITE. */
+  if ( tm_node_color(t->bottom) == t->c->c[tm_WHITE] ) {
+    t->bottom = tm_node_next(t->bottom);
+  }
+
   /* Start scanning at top. */
   t->scan = t->top;
 
   /* Mark roots. */
   tm_tread_mark_roots(t);
-
-  /* Do not allocate into WHITE. */
-  if ( tm_node_color(t->bottom) == t->c->c[tm_WHITE] ) {
-    t->bottom = tm_node_next(t->bottom);
-  }
 
   /* If there was no WHITE, assume more_white(). */
   if ( ! t->n[t->c->c[tm_WHITE]] ) {

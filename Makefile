@@ -109,6 +109,7 @@ tmtest-run : mak_gen/Linux/t/tmtest
 
 tread_test-run : mak_gen/Linux/t/tread_test
 	mkdir -p images
+	rm -f images/*.*
 	$< 1265080291
 
 debug: all
