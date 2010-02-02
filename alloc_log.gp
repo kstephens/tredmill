@@ -4,11 +4,22 @@ set size   1.0, 1.0
 set origin 0.0, 0.0
 set multiplot layout 5, 1
 
+set border 0
+set xtics out 
+set ytics out
+unset ytics
+
+set key out 
+set key bottom center
+set key off
+
 #set style data points
 #set title "Allocation Addresses"
+#set ytics off
 plot \
      "/tmp/tm_alloc.log" using 1:2 title 'PTR' with points pointtype 7 pointsize .001
 #replot
+#set ytics on
 
 #set title "Color Counts"
 plot "/tmp/tm_alloc.log"  \
