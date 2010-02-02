@@ -17,31 +17,34 @@ void tm_tread_mark_roots(tm_tread *t)
 {
   int j;
 
-  // render_dot(t, 0, "flipped");
+  render_dot(t, 0, "flipped");
 
   fprintf(stderr, "  tm_tread_mark_roots(%p)\n", (void*) t);
   for ( j = 0; j < 4; ++ j ) {
     int i = rand() % nodes_parceled;
     tm_node *n = &nodes[i];
     if ( tm_node_color(n) == t->c->c[tm_ECRU] ) {
-      // fprintf(stderr, "    %p\n", (void*) n);
+      fprintf(stderr, "    %p\n", (void*) n);
       tm_tread_mark(t, n);
-      // render_dot(t, n, "mark root @ ");
+      render_dot(t, n, "mark root @ ");
     }
   }
+
+  render_dot(t, 0, "roots marked");
 }
 
 
-void tm_node_scan(tm_node *n)
+void _tm_node_scan(tm_node *n)
 {
-  if ( (((unsigned long) n) / sizeof(tm_node)) % 2 == 0 ) {
+  if ( (n - nodes) % 2 == 0 ) {
     int i = rand() % nodes_parceled;
     tm_node *r = &nodes[i];
     if ( tm_node_color(r) == t->c->c[tm_ECRU] ) {
       // fprintf(stderr, "    %p => %p\n", (void*) n, (void*) r);
       tm_tread_mark(t, r);
+      render_dot(t, r, "mark @ ");
     }
-    // render_dot(t, n, "scanned @ ");
+    render_dot(t, n, "scanned @ ");
   }
 }
 

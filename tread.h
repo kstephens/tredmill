@@ -132,6 +132,7 @@ tm_node *tm_tread_allocate(tm_tread *t)
   }
 
   n = t->free;
+  assert(tm_node_color(n) == t->c->c[tm_WHITE]);
   t->free = tm_list_next(t->free);
 
   tm_list_set_color(n, t->c->c[tm_BLACK]);
@@ -147,7 +148,7 @@ static __inline
 void tm_tread_mark(tm_tread *t, tm_node *n)
 {
   assert(tm_node_color(n) != t->c->c[tm_WHITE]);
-  if ( tm_node_color(n) != t->c->c[tm_ECRU] ) {
+  if ( tm_node_color(n) == t->c->c[tm_ECRU] ) {
     if ( t->top == n ) {
       t->top = tm_node_prev(n);
     } else {
@@ -167,17 +168,18 @@ void tm_tread_mark(tm_tread *t, tm_node *n)
 }
 
 
-void tm_node_scan(tm_node *n);
+void _tm_node_scan(tm_node *n);
 
 static __inline
 void tm_tread_scan(tm_tread *t)
 {
   tm_node *n = t->scan;
   if ( t->scan != t->top ) {
-    t->scan = tm_node_prev(t->scan);
     tm_list_set_color(n, t->c->c[tm_BLACK]);
     -- t->n[t->c->c[tm_GREY]];
     ++ t->n[t->c->c[tm_BLACK]];
+    _tm_node_scan(n);
+    t->scan = tm_node_prev(n);
   }
 }
 
