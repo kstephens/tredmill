@@ -84,6 +84,9 @@ struct tm_data {
   /*! The color of newly allocated nodes. */
   int alloc_color;
 
+  /*! If true, nodes are currently being parceled. */
+  int parceling;
+
   /*! Number of transitions from one color to another. */
   size_t n_color_transitions[tm_TOTAL + 1][tm_TOTAL + 1];
 

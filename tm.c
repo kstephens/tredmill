@@ -273,7 +273,7 @@ void _tm_node_set_color(tm_node *n, tm_block *b, tm_type *t, tm_color c)
   ++ tm.alloc_n[tm_TOTAL];
 
   /*! Increment global color transitions. */
-  if ( ! tm.p.parceling ) {
+  if ( ! tm.parceling ) {
     tm_assert_test(c != nc);
     ++ tm.n_color_transitions[nc][c];
     ++ tm.n_color_transitions[nc][tm_TOTAL];
@@ -927,7 +927,7 @@ int _tm_node_parcel_some(tm_type *t, long left)
   size_t bytes = 0;
   tm_block *b;
   
-  ++ tm.p.parceling;
+  ++ tm.parceling;
 
   /**
    * If a tm_block is already scheduled for parceling, parcel from it.
@@ -998,7 +998,7 @@ int _tm_node_parcel_some(tm_type *t, long left)
 
   done:
 
-  -- tm.p.parceling;
+  -- tm.parceling;
 
 #if 0
   if ( count )

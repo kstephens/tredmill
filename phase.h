@@ -50,7 +50,6 @@ struct tm_phase_data {
   tm_time_stat   ts_phase[tm_phase_END]; 
 
   /*! Possible actions during current phase. */
-  int parceling;
   int allocating;
   int marking;
   int scanning;
