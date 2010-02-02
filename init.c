@@ -43,10 +43,6 @@ int    tm_root_scan_full = 1;
 /* \defgroup initialization Initialization */
 /*@{*/
 
-static __inline
-void tm_type_init(tm_type *t, size_t size);
-
-
 /**
  * Determine the direction of stack growth.
  */

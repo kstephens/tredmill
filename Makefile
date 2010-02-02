@@ -25,6 +25,7 @@ C_FILES = \
   debug.c \
   stats.c \
   os.c \
+  type.c \
   root.c \
   barrier.c \
   mark.c \
@@ -108,9 +109,13 @@ tmtest-run : mak_gen/Linux/t/tmtest
 	done
 
 tread_test-run : mak_gen/Linux/t/tread_test
-	mkdir -p images
-	rm -f images/*.*
-	$< 1265080291
+	set -e ;\
+	for t in 1265080291 ''; \
+	do \
+	  mkdir -p images ;\
+	  rm -f images/*.* ;\
+	  $< $$t ;\
+	done
 
 debug: all
 	gdb mak_gen/Linux/t/tmtest

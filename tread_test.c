@@ -7,7 +7,7 @@ static
 void render_dot(tm_tread *t, tm_node *mark, const char *desc);
 
 #define N 60
-static int seed;
+static int seed = 0;
 static int nodes_parceled = 0;
 static tm_colors colors;
 static tm_node nodes[N];
@@ -161,8 +161,9 @@ int main(int argc, char **argv)
   tm_node *n = 0;
 
   if ( argc > 1 ) {
-    seed = (atoi(argv[1]));
-  } else {
+    seed = *argv[1] ? atoi(argv[1]) : 0;
+  }
+  if ( ! seed ) {
     time_t t;
     time(&t);
     seed = (t ^ getpid());

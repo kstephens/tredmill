@@ -46,7 +46,7 @@ typedef struct tm_type {
   tm_list blocks;     
 
   /*! Number of nodes, indexed by tm_color: includes tm_TOTAL, tm_B, tm_NU, tm_b, tm_b_NU stats. */        
-  size_t n[tm__LAST2];
+  size_t *n; /* == &tread.n */
 
   /*! The tread for this type. */
   tm_tread tread;
@@ -61,6 +61,11 @@ typedef struct tm_type {
   struct tm_adesc *desc;
 } tm_type;
 
+
+void tm_type_init(tm_type *t, size_t size);
+tm_type *tm_type_new(size_t size);
+tm_adesc *tm_adesc_for_size(tm_adesc *desc, int force_new);
+tm_type *tm_size_to_type(size_t size);
 
 /*@}*/
 

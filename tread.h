@@ -45,9 +45,9 @@ struct tm_tread {
 
   /**
    * Current count of nodes by color.
-   * Include total node count at n[tm_TOTAL].
+   * Includes tm_TOTAL, tm_B, tm_NU, tm_b, tm_b_NU stats.
    */
-  size_t  n[tm__LAST];
+  size_t  n[tm__LAST2];
 
   /**
    * Current color mapping.
