@@ -87,6 +87,9 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   /*! Initialize allocation colors. */
   tm.alloc_color = tm_ECRU;
 
+  /*! Initialize phase data. */
+  tm_phase_data_init(&tm.p);
+
   /*! Initialize time stat names. */
   tm.ts_os_alloc.name = "tm_os_alloc";
   tm.ts_os_free.name = "tm_os_free";
@@ -98,10 +101,6 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm.ts_barrier_pure.name = "tm_barrier_p";
   tm.ts_barrier_root.name = "tm_barrier_r";
   tm.ts_barrier_black.name = "tm_barrier B";
-
-  for ( i = 0; i < (sizeof(tm.p.ts_phase) / sizeof(tm.p.ts_phase[0])); ++ i ) {
-    tm.p.ts_phase[i].name = tm_phase_name[i];
-  }
 
   /*! Initialize tm_msg() ignore table. */
   if ( tm_msg_enable_all ) {

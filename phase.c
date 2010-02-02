@@ -23,6 +23,19 @@ const char *tm_phase_name[] = {
   "Total",  /* tm_phase_END */
 };
 
+
+void tm_phase_data_init(tm_phase_data *pd)
+{
+  int i;
+
+  memset(pd, 0, sizeof(*pd));
+
+  for ( i = 0; i < (sizeof(pd->ts_phase) / sizeof(pd->ts_phase[0])); ++ i ) {
+    pd->ts_phase[i].name = tm_phase_name[i];
+  }
+}
+
+
 /**
  * Initialize the collection/allocation phase.
  */
