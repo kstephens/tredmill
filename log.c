@@ -21,7 +21,7 @@ void tm_alloc_log_init()
     if ( ! tm_alloc_log_fh ) {
       tm_abort();
     }
-    fprintf(tm_alloc_log_fh, "#ID PTR WHITE ECRU GREY BLACK PHASE BLOCKS FREE_BLOCKS\n");
+    fprintf(tm_alloc_log_fh, "#ID PTR WHITE ECRU GREY BLACK TOTAL BLOCKS FREE_BLOCKS\n");
   }
 }
 
@@ -39,13 +39,14 @@ void tm_alloc_log(void *ptr)
 	      (unsigned long) tm.n[GREY],
 	      (unsigned long) tm.n[BLACK],
 	      (unsigned long) tm.n[tm_TOTAL],
-	      0UL, /* (unsigned long) tm.p.phase, */
 	      (unsigned long) tm.n[tm_B],
 	      (unsigned long) tm.free_blocks_n
 	      );
     }
+#if 1
     if ( log_ratio < 1000 && log_id / log_ratio > 100 ) {
       log_ratio *= 10;
     }
+#endif
   }
 }

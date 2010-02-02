@@ -3,6 +3,7 @@
 
 
 #include "tredmill/tm_data.h"
+#include "tredmill/ptr.h"
 
 
 static __inline
@@ -13,6 +14,8 @@ void tm_tread_scan(tm_tread *t);
 static __inline
 void tm_tread_add_white(tm_tread *t, tm_node *n)
 {
+  tm_block *b = tm_node_to_block(n);
+
   if ( ! t->n[tm_TOTAL] ) {
     tm_list_init(n);
     t->free = t->bottom = t->top = t->scan = n;
@@ -24,9 +27,14 @@ void tm_tread_add_white(tm_tread *t, tm_node *n)
     }
   }
   tm_list_set_color(n, WHITE);
+
+  ++ b->n[WHITE];
   ++ t->n[WHITE];
   ++ tm.n[WHITE];
+
+  ++ b->n[tm_TOTAL];
   ++ t->n[tm_TOTAL];
+  ++ tm.n[tm_TOTAL];
 
   tm_tread_VALIDATE(t);
 }
@@ -36,13 +44,19 @@ static __inline
 tm_node *tm_tread_alloc_node_from_free_list(tm_tread *t)
 {
   tm_node *n = t->free;
+  tm_block *b = tm_node_to_block(n);
+
   assert(tm_node_color(n) == WHITE);
+
   t->free = tm_list_next(t->free);
 
   tm_list_set_color(n, BLACK);
 
+  -- b->n[WHITE];
   -- t->n[WHITE];
   -- tm.n[WHITE];
+
+  ++ b->n[BLACK];
   ++ t->n[BLACK];
   ++ tm.n[BLACK];
 
@@ -81,6 +95,8 @@ tm_node *tm_tread_allocate(tm_tread *t)
 static __inline
 void tm_tread_mark_grey(tm_tread *t, tm_node *n)
 {
+  tm_block *b = tm_node_to_block(n);
+
   if ( t->top == n ) {
     t->top = tm_node_prev(n);
   } else {
@@ -95,6 +111,7 @@ void tm_tread_mark_grey(tm_tread *t, tm_node *n)
     //    t->top = tm_node_next(t->scan);
   }
 
+  ++ b->n[GREY];
   ++ t->n[GREY];
   ++ tm.n[GREY];
 }
@@ -105,12 +122,15 @@ void tm_tread_mark(tm_tread *t, tm_node *n)
 {
   assert(tm_node_color(n) != WHITE);
   if ( tm_node_color(n) == ECRU ) {
+    tm_block *b = tm_node_to_block(n);
+
     if ( t->bottom == n ) {
       t->bottom = tm_node_next(n);
     }
 
     tm_tread_mark_grey(t, n);
 
+    -- b->n[ECRU];
     -- t->n[ECRU];
     -- tm.n[ECRU];
 
@@ -126,14 +146,19 @@ void tm_tread_scan(tm_tread *t)
 {
   if ( t->scan != t->top ) {
     tm_node *n = t->scan;
+    tm_block *b = tm_node_to_block(n);
+
     t->scan = tm_node_prev(n);
 
     assert(tm_list_color(n) == GREY);
 
     tm_list_set_color(n, BLACK);
 
+    -- b->n[GREY];
     -- t->n[GREY];
     -- tm.n[GREY];
+
+    ++ b->n[BLACK];
     ++ t->n[BLACK];
     ++ tm.n[BLACK];
 
@@ -151,8 +176,11 @@ static __inline
 void tm_tread_mutation(tm_tread *t, tm_node *n)
 {
   if ( tm_node_color(n) == BLACK ) {
+    tm_block *b = tm_node_to_block(n);
+
     tm_tread_mark_grey(t, n);
 
+    -- b->n[BLACK];
     -- t->n[BLACK];
     -- tm.n[BLACK];
 

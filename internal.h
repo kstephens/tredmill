@@ -39,7 +39,7 @@ static __inline
 void tm_node_iterator_init(tm_node_iterator *ni)
 {
   ni->type = (void *) &tm.types;
-#if 1
+#if 0
   ni->node_next = (void *) &ni->type->color_list[ni->color];
 #endif
   ni->node = 0;
@@ -72,20 +72,23 @@ tm_node * tm_node_iterator_next(tm_node_iterator *ni)
       }
       
     next_type:
+#if 0
       /* Start on type node color_list. */
       ni->node_next = (void *) &ni->type->color_list[ni->color];
-
+#endif
       tm_assert(tm_list_color(ni->node_next) == ni->color);
 
       /* Move iterator to first node. */
       ni->node_next = (void *) tm_list_next(ni->node_next);
     }
 
+#if 0
     /* At end of type color list? */
     if ( ! ni->node_next || (void *) ni->node_next == (void *) &ni->type->color_list[ni->color] ) {
       ni->type = (void*) tm_list_next(ni->type);
       goto next_type;
     }
+#endif
 
     if ( tm_node_color(ni->node_next) != ni->color ) {
       fprintf(stderr, "  tm_node_iterator %p: node_color_iter[%s] derailed at node_next %p color %s, t#%d\n",

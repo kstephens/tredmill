@@ -51,7 +51,7 @@ typedef struct tm_type {
   /*! The tread for this type. */
   tm_tread tread;
 
-#if 1
+#if 0
   /*! Lists of node by color; see tm_node.list. */
   tm_list color_list[tm_TOTAL];
 #endif

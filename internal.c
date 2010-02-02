@@ -17,21 +17,35 @@ void tm_node_mutation(tm_node *n)
 static __inline
 void _tm_alloc_scan_any(tm_type *t)
 {
+  int i;
+
   tm_tread_scan(&t->tread);
 
-  if ( tm.type_scan != t ) {
-    tm_tread_scan(tm_type_tread(tm.type_scan));
-  }
-  tm.type_scan = tm_list_next(tm.type_scan);
-  if ( (void*) tm.type_scan == (void*) &tm.types ) {
+  for ( i = 0; i < tm.type_id; ++ i ) {
+    if ( tm.type_scan != t ) {
+      tm_tread_scan(tm_type_tread(tm.type_scan));
+    }
+    
     tm.type_scan = tm_list_next(tm.type_scan);
+    if ( (void*) tm.type_scan == (void*) &tm.types ) {
+      tm.type_scan = tm_list_next(tm.type_scan);
+    }
   }
 }
+
 
 static __inline
 void _tm_alloc_flip_all()
 {
   tm_type *type;
+
+  fprintf(stderr, "#### _tm_alloc_flip_all %lu: %lu %lu %lu %lu %lu\n", 
+	  (unsigned long) tm.alloc_id,
+	  (unsigned long) tm.n[0],
+	  (unsigned long) tm.n[1],
+	  (unsigned long) tm.n[2],
+	  (unsigned long) tm.n[3],
+	  (unsigned long) tm.n[4]);
 
   /* Flip the colors, globally. */
   tm_colors_flip(&tm.colors);
@@ -59,14 +73,6 @@ void _tm_alloc_flip_all()
  *
  * Algorithm:
  *
- * Depending on tm.phase, the allocator will do some other work
- * before returning an data ptr from a tm_node:
- * - Unmark some allocated nodes (BLACK->ECRU).
- * - Scan roots (stacks or globals) for pointers to nodes.
- * - Scan marked nodes for pointers to other nodes (GREY->BLACK).
- * - Sweep some unused nodes to their free lists (ECRU->WHITE).
- * .
- *
  * A node is taken from the tm_type's free list, or a new
  * block is allocated and parcelled into the tm_type's free list.
  *
@@ -74,6 +80,9 @@ void _tm_alloc_flip_all()
 void *_tm_alloc_type_inner(tm_type *t)
 {
   void *ptr;
+
+  /*! Increment the allocation id. */
+  ++ tm.alloc_id;
 
   /*! Reset during tm_alloc() stats: tm_data.alloc_n. */
   tm.alloc_pass = 0;

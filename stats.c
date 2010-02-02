@@ -79,18 +79,18 @@ void _tm_print_utilization(const char *name, tm_type *t, size_t *n, int nn, size
   }
 
   /* Print fields. */
-  for ( j = 0; j < nn && j <= tm_BLACK; j ++ ) {
+  for ( j = 0; j < nn && j <= tm_BLACK; ++ j ) {
     if ( sum && sum != n && j <= tm_B ) {
       sum[j] += n[j];
     }
-    tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) n[tm.colors.c[j]]);
+    tm_msg1("%c%-6lu ", tm_color_name[j][0], (unsigned long) n[tm.colors.c[j]]);
   }
 
-  for (      ; j < nn; j ++ ) {
+  for (      ; j < nn; ++ j ) {
     if ( sum && sum != n && j <= tm_B ) {
       sum[j] += n[j];
     }
-    tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) n[j]);
+    tm_msg1("%c%-6lu ", tm_color_name[j][0], (unsigned long) n[j]);
   }
 
   tm_msg1("\n");
@@ -108,7 +108,7 @@ void tm_print_stats()
 
   tm_msg_enable("X", 1);
 
-  tm_msg("X { t#%d : blk_in_use %lu[~%lu], blk_free %lu[~%lu]\n",
+  tm_msg("X { t#%02d : blk_in_use %lu[~%lu], blk_free %lu[~%lu]\n",
 	 tm.type_id,
 	 tm.n[tm_B],
 	 tm.n[tm_B] * tm_block_SIZE,
@@ -118,8 +118,12 @@ void tm_print_stats()
 
   tm_list_LOOP(&tm.types, t);
   {
-    tm_msg("X  t#%d S%-6lu\n", t->id, (unsigned long) t->size, (unsigned) t->n[tm_B]);
-    _tm_print_utilization("X    ", t, t->n, sizeof(t->n)/sizeof(t->n[0]), sum);
+    tm_msg("X  t#%02d S%-6lu nB%-2lu pfb%p\n", 
+	   t->id, 
+	   (unsigned long) t->size, 
+	   (unsigned long) t->n[tm_B],
+	   (void*) t->parcel_from_block);
+    _tm_print_utilization("X    ", t, t->tread.n, sizeof(t->tread.n)/sizeof(t->tread.n[0]), sum);
   }
   tm_list_LOOP_END;
 
@@ -234,7 +238,11 @@ void tm_print_block_stats()
 
   tm_list_LOOP(&tm.types, t);
   {
-    tm_msg("X   t#%d @%p s%lu \n", t->id, (void*) t, (unsigned long) t->size);
+    tm_msg("X   t#%02d @%p s%lu pfb%p\n", 
+	   t->id, 
+	   (void*) t, 
+	   (unsigned long) t->size,
+	   (void*) t->parcel_from_block);
     
     tm_list_LOOP(&t->blocks, b);
     {
@@ -242,14 +250,14 @@ void tm_print_block_stats()
 
       _tm_block_validate(b);
 
-      tm_msg("X     b#%d @%p s%lu ", (int) b->id, (void*) b, (unsigned long) b->size);
+      tm_msg("X     b#%03d @%p s%lu ", (int) b->id, (void*) b, (unsigned long) b->size);
 
       for ( j = 0; j <= tm_BLACK; j ++ ) {
-	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[tm.colors.c[j]]);
+	tm_msg1("%c%-6lu ", tm_color_name[j][0], (unsigned long) b->n[tm.colors.c[j]]);
       }
 
       for (      ; j < sizeof(b->n)/sizeof(b->n[0]); j ++ ) {
-	tm_msg1("%c%-4lu ", tm_color_name[j][0], (unsigned long) b->n[j]);
+	tm_msg1("%c%-6lu ", tm_color_name[j][0], (unsigned long) b->n[j]);
       }
       
       /* Parcel utilization. */

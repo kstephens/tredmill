@@ -244,6 +244,4 @@ extern struct tm_data tm;
 
 /*@}*/
 
-
-
 #endif

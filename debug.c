@@ -281,6 +281,7 @@ void tm_validate_lists()
     tm_list_LOOP_END;
     tm_assert(bn[tm_B] == t->n[tm_B]);
 
+#if 0
     /* Validate colored node lists. */
     for ( j = 0; 
 	  j < sizeof(t->color_list) / sizeof(t->color_list[0]); 
@@ -299,7 +300,8 @@ void tm_validate_lists()
       n[j] += tn[j];
       n[tm_TOTAL] += tn[j];
     }
-    tm_assert(t->n[tm_TOTAL] == tn[tm_TOTAL]);
+    tm_assert(t->n[tm_TOTAL] == tn[tm_TOTAL]); 
+#endif
   }
   tm_list_LOOP_END;
 
