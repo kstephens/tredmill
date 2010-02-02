@@ -100,8 +100,6 @@ typedef struct tm_colors {
 } tm_colors;
 
 
-extern int _tm_alloc_color;
-
 /*@}*/
 
 #endif

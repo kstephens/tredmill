@@ -310,7 +310,7 @@ void _tm_phase_init(int p)
     tm.scanning = 0;
     tm.sweeping = 0;
 
-    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
+    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
 
     break;
 
@@ -324,7 +324,7 @@ void _tm_phase_init(int p)
     tm.scanning = 0;
     tm.sweeping = 0;
 
-    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
+    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
 
     /*! Set up for unmarking. */
     tm_node_LOOP_INIT(tm_BLACK);
@@ -343,7 +343,7 @@ void _tm_phase_init(int p)
     tm.scanning = 0;
     tm.sweeping = 0;
 
-    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
+    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
 
     /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
@@ -362,7 +362,7 @@ void _tm_phase_init(int p)
     tm.scanning = 1;
     tm.sweeping = 0;
 
-    _tm_alloc_color = tm_DEFAULT_ALLOC_COLOR;
+    tm.alloc_color = tm_DEFAULT_ALLOC_COLOR;
 
     /*! Mark stack and data roots as un-mutated. */
     tm.stack_mutations = tm.data_mutations = 0;
@@ -381,7 +381,7 @@ void _tm_phase_init(int p)
     tm.scanning = 0;
     tm.sweeping = 1;
 
-    _tm_alloc_color = tm_SWEEP_ALLOC_COLOR;
+    tm.alloc_color = tm_SWEEP_ALLOC_COLOR;
 
     tm_assert_test(tm.n[tm_GREY] == 0);
 
@@ -1790,7 +1790,7 @@ void *_tm_type_alloc_node_from_free_list(tm_type *t)
   memset(ptr, 0, t->size);
   
   /*! Put the tm_node on the appropriate allocated list, depending on the tm.phase. */
-  tm_node_set_color(n, tm_node_to_block(n), _tm_alloc_color);
+  tm_node_set_color(n, tm_node_to_block(n), tm.alloc_color);
   
   /*! Mark the tm_node's page as used. */
   _tm_page_mark_used(ptr);

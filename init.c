@@ -61,9 +61,6 @@ int tm_stack_growth(char *ptr, int depth)
 }
 
 
-int _tm_alloc_color = tm_ECRU;
-
-
 static void _tm_block_sweep_init();
 
 /**
@@ -86,7 +83,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
   tm_assert(sizeof(unsigned long) == sizeof(void *));
 
   /*! Initialize allocation colors. */
-  _tm_alloc_color = tm_ECRU;
+  tm.alloc_color = tm_ECRU;
 
   /*! Initialize time stat names. */
   tm.ts_os_alloc.name = "tm_os_alloc";
