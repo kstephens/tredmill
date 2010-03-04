@@ -54,13 +54,13 @@ void *tm_type_prepare_allocated_node(tm_type *t, tm_node *n)
 {
   void *ptr;
 
-  /*! Assert its located in a valid tm_block. */
+  /*! Assert the tm_node is located in a valid tm_block. */
   tm_assert_test(tm_node_to_block(n)->type == t);
   
-  /*! Get the ptr the tm_node's data space. */
+  /*! Get the pointer to the tm_node's data space. */
   ptr = tm_node_to_ptr(n);
   
-  /*! Clear the data space. */
+  /*! Clear the tm_node's data space. */
   memset(ptr, 0, t->size);
   
   /*! Mark the tm_node's page as used. */

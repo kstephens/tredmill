@@ -7,8 +7,10 @@
 
 #include "internal.h"
 
+
 /*! Uninitialized global memory. */
 int _tm_user_bss[4];
+
 /*! Initialized global memory. */ 
 int _tm_user_data[4] = { 0, 1, 2, 3 };
 
@@ -96,7 +98,7 @@ void *tm_alloc_desc(tm_adesc *desc)
 
 
 /**
- * API: Reallocate a node of a givin size.
+ * API: Reallocate a node of a given size.
  *
  * May return the same pointer, a different pointer or 0.
  *

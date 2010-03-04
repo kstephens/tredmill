@@ -131,7 +131,7 @@ void *_tm_os_alloc(long size)
 #endif
 
   /* Soft memory limit? */
-  if ( tm_os_alloc_total + size > tm_os_alloc_max ) {
+  if ( tm_os_alloc_max && (tm_os_alloc_total + size > tm_os_alloc_max) ) {
     ptr = 0;
   } else {
     ptr = _tm_os_alloc_(size);

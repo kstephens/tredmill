@@ -144,7 +144,9 @@ void tm_tread_mark(tm_tread *t, tm_node *n)
     -- t->n[ECRU];
     -- tm.n[ECRU];
 
+#if 1
     fprintf(stderr, "M");
+#endif
 
     tm_tread_VALIDATE(t);
   }
@@ -174,7 +176,9 @@ int tm_tread_scan(tm_tread *t)
     ++ t->n[BLACK];
     ++ tm.n[BLACK];
 
+#if 1
     fprintf(stderr, "S");
+#endif
 
     _tm_node_scan (n);
 
@@ -187,7 +191,10 @@ int tm_tread_scan(tm_tread *t)
 }
 
 
-
+/**
+ * Called by write barrier to reschedule scanning of mutated BLACK nodes, 
+ * by recoloring them as GREY nodes.
+ */
 static __inline
 int tm_tread_mutation(tm_tread *t, tm_node *n)
 {
@@ -274,7 +281,7 @@ void tm_tread_flip(tm_tread *t)
 static __inline
 void tm_tread_after_roots(tm_tread *t)
 {
-  /* If there was no WHITE, assume more_white(). */
+  /* If there was no WHITE, assume more_white() will be called. */
   if ( ! t->n[WHITE] ) {
     t->bottom = t->free = tm_node_next(t->scan);
   }

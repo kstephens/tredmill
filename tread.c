@@ -2,6 +2,10 @@
 #include "tredmill/debug.h"
 #include "tredmill/tm_data.h"
 
+
+/**
+ * Validates a tread.
+ */
 void tm_tread_validate(tm_tread *t)
 {
   tm_node *n;
@@ -44,6 +48,9 @@ void tm_tread_validate(tm_tread *t)
   }
 }
 
+/**
+ * Render a tread to a graphviz dot file.
+ */
 void tm_tread_render_dot(FILE *fp, tm_tread *t, const char *desc, int markn, tm_node **marks)
 {
   static

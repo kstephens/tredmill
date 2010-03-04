@@ -180,8 +180,8 @@ tm_node *tm_ptr_to_node(void *p)
   if ( ! b->type )
     return 0;
 
-  /*! Avoid references to block headers or outsize the allocated space. */ 
-  if ( p > tm_block_node_next_parcel(b) )
+  /*! Avoid references to block headers or outside the allocated space. */ 
+  if ( p >= tm_block_node_next_parcel(b) )
     return 0;
 
   if ( p < tm_block_node_begin(b) )

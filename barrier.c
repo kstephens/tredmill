@@ -44,7 +44,7 @@ void tm_write_barrier_node(tm_node *n)
 
   if ( c == GREY ) {
     /**
-     * If node is tm_GREY,
+     * If node is GREY,
      * it is already marked for scanning.
      */
 
@@ -114,7 +114,7 @@ void __tm_write_barrier_ignore(void *ptr)
 /*@{*/
 
 /**
- * Write barrier for pure pointers during tm_SCAN.
+ * Write barrier for pure pointers.
  */
 void __tm_write_barrier_pure(void *ptr)
 {

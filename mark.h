@@ -42,7 +42,7 @@ int _tm_node_mark(tm_node *n)
   }
 
   /**
-   * If tm_BLACK or tm_GREY
+   * If node is BLACK or GREY
    * the node has already been marked.
    * DO NOTHING.
    */
@@ -53,7 +53,7 @@ int _tm_node_mark(tm_node *n)
 
 
 /**
- * Mark a potential pointer.
+ * Mark a possible pointer.
  * Returns true if something was marked.
  */
 static __inline 

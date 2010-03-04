@@ -63,6 +63,8 @@ typedef struct tm_node_large {
 
 /**
  * Colored Node Iterator.
+ *
+ * DELETE ME!
  */
 typedef struct tm_node_iterator {
   /*! The color of nodes to iterate on. */

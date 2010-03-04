@@ -16,7 +16,7 @@ void _tm_range_scan(const void *b, const void *e)
 {
   const char *p;
 
-  /* Avoid overlapping pointer. */
+  /* Avoid pointer overlapping end of range. */
   e = ((char *) e) - sizeof(void*);
 
   for ( p = b; 
@@ -174,6 +174,7 @@ int _tm_root_scan_some()
 }
 
 /*@}*/
+
 
 /***************************************************************************/
 /*! \defgroup marking Marking */

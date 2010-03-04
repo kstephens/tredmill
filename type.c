@@ -38,6 +38,7 @@ void tm_type_init(tm_type *t, size_t size)
   t->n = t->tread.n;
   
 #if 0
+  /* DELETE ME! */
   /*! Initialize the tm_type.color_list. */
   {
     int j;
@@ -96,7 +97,7 @@ tm_type *tm_type_new(size_t size)
    * Allocate some tm_nodes now so the tm_type's free list (WHITE) is not empty.
    * to avoid triggering a collection.
    *
-   * Assume this is being called because an tm_alloc() is envitable.
+   * Assume this is being called because a tm_alloc() is envitable.
    */
   tm_type_parcel_or_alloc_node(t);
 
@@ -217,6 +218,11 @@ tm_type *tm_size_to_type(size_t size)
   /*! Otherwise, align size to the next power of two. */
 #define POW2(i) if ( size <= (1UL << i) ) size = (1UL << i); else
 
+  /*
+   * Start with 8 bytes as smallest actual size.
+   * on 32-bit architectures this is 100% node fragmentation --
+   * tm_list header is the same size as the node data space.
+   */
   POW2(3)
   POW2(4)
   POW2(5)
@@ -231,6 +237,21 @@ tm_type *tm_size_to_type(size_t size)
   POW2(14)
   POW2(15)
   POW2(16)
+  POW2(17)
+  POW2(18)
+  POW2(19)
+  POW2(20)
+  POW2(21)
+  POW2(22)
+  POW2(23)
+  POW2(24)
+  POW2(25)
+  POW2(26)
+  POW2(27)
+  POW2(28)
+  POW2(29)
+  POW2(30)
+  POW2(31)
   (void) 0;
 
 #undef POW2
@@ -398,7 +419,7 @@ int tm_type_parcel_some_nodes(tm_type *t, long left)
 
   /**
    * If a tm_block is already scheduled for parceling, parcel from it.
-   * Otherwise, try to allocate a block from the free list and schedule it for parceling.
+   * Otherwise, try to allocate a block from the block free list and schedule it for parceling.
    */
   if ( ! t->parcel_from_block ) {
     if ( (b = _tm_block_alloc_from_free_list(tm_block_SIZE)) ) {
@@ -441,7 +462,7 @@ int tm_type_parcel_some_nodes(tm_type *t, long left)
 	}
       }
   
-      /*! Initialize the tm_node. */
+      /*! Initialize the tm_node relationship with its tm_block. */
       tm_block_init_node(b, n);
 
       tm_assert_test(tm_node_color(n) == WHITE);

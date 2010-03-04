@@ -226,7 +226,7 @@ int tm_root_add(const char *name, const void *l, const void *h)
 
 
 /**
- * API: Add a root set.
+ * API: Add a root callback.
  */
 int tm_root_add_callback(const char *name, void (*callback)(void*), void *callback_data)
 {
@@ -294,7 +294,7 @@ void tm_root_remove(const char * name, const void *l, const void *h)
 	 tm.aroots[i].name,
 	 i);
 
-  /* Adding a anti-root might require splitting existing roots. */
+  /* Adding an anti-root may require splitting existing roots. */
   /* Do not split tm.root[0], it's the machine register set! */
 
   for ( i = tm.root_datai; i < tm.nroots; ++ i ) {
@@ -325,6 +325,9 @@ void tm_root_remove(const char * name, const void *l, const void *h)
 }
 
 
+/**
+ * Returns true if a pointer is in any root set.
+ */
 int tm_ptr_is_in_root_set(const void *ptr)
 {
   int i;

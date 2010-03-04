@@ -15,7 +15,7 @@
 /**
  * A doubly-linked list header with 2 color bits hidden in the lower bits of the prev pointer.
  *
- * Assumes that tm_list objects are always word aligned, thus the two lower bits are always zero.
+ * Assumes that tm_list objects are always word-aligned, thus the two lower bits are always zero.
  *
  * Can be used as a list on its own or a header for each list element. 
  */
@@ -27,7 +27,7 @@ typedef struct tm_list {
   struct tm_list *_next;
  
   /**
-   * Pointer to next list element with color encoded in lower 2 bits.
+   * Pointer to prev list element with color encoded in lower 2 bits.
    */
   union {
     /*! Pointer to prev element, uncolored. */

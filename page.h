@@ -10,6 +10,7 @@
 
 /*! True if ptr is aligned to a tm_block */
 #define tm_ptr_is_aligned_to_block(ptr) !(((unsigned long) ptr) % tm_block_SIZE)
+
 /*! True if ptr is aligned to a OS page. */
 #define tm_ptr_is_aligned_to_page(ptr) !(((unsigned long) ptr) % tm_page_SIZE)
 

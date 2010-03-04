@@ -29,7 +29,9 @@ void _tm_node_scan(tm_node *n)
 #endif
 }
 
-
+/**
+ * Marks a tm_node as mutated.
+ */
 void tm_node_mutation(tm_node *n)
 {
   tm_block *block = tm_node_to_block(n);
@@ -40,6 +42,11 @@ void tm_node_mutation(tm_node *n)
 }
 
 
+/**
+ *
+ * Scan a GREY node of tm_type t,
+ * and/or scan a GREY node of any other tm_types.
+ */
 static __inline
 void _tm_alloc_scan_any(tm_type *t)
 {
@@ -60,6 +67,9 @@ void _tm_alloc_scan_any(tm_type *t)
 }
 
 
+/**
+ * Scan all GREY nodes in all types.
+ */
 static __inline
 void _tm_alloc_scan_all()
 {
@@ -77,6 +87,14 @@ void _tm_alloc_scan_all()
   }
 }
 
+
+/**
+ * Flip colors, globaly.
+ * Flip each tm_type.
+ * Mark all roots.
+ * Notify each tm_type of root mark.
+ * Reset alloc_since_flip counter.
+ */
 static __inline
 void _tm_alloc_flip_all()
 {
@@ -152,6 +170,7 @@ void *_tm_alloc_type_inner(tm_type *t)
 	  (unsigned long) tm.alloc_since_flip,
 	  (unsigned long) tm.n[tm_TOTAL]);
 
+  /* HACK!!! */
   if ( ! tm.n[WHITE] ) {
     if ( tm.alloc_since_flip > tm.n[tm_TOTAL] / 2 ) {
       fprintf(stderr, "[SCANALL]");
@@ -159,7 +178,7 @@ void *_tm_alloc_type_inner(tm_type *t)
     }
   }
 
-  /* If no GREY nodes, maybe flip? */
+  /*! If no WHITE or GREY nodes, maybe flip? */
   if ( ! tm.n[WHITE] && ! tm.n[GREY] ) {
     _tm_alloc_flip_all();
   }
@@ -169,15 +188,15 @@ void *_tm_alloc_type_inner(tm_type *t)
     tm_type_parcel_or_alloc_node(t);
   }
 
-  /* Check if some was allocated. */
+  /*! If some nodes were were parcelled, */
   if ( t->n[WHITE] ) {
     /*! Take node from tread's free list. */
     tm_node *n = tm_tread_alloc_node_from_free_list(&t->tread);
     
-    /*! Updates its stats. */
+    /*! Update the stats for the allocated node. */
     ptr = tm_type_prepare_allocated_node(t, n);
   } else {
-    /* Out of memory! */
+    /*! Otherwise, Out of memory! */
     ptr = 0;
   }
 

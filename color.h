@@ -40,6 +40,7 @@ typedef enum tm_color {
 
   /*! Total blocks in use. */
   tm_B = tm__LAST,
+  /*! Total tm_node capacity of a tm_block. */
   tm_CAPACITY = tm_B,
   /*! Total nodes in use. */ 
   tm_NU,

@@ -26,6 +26,8 @@ struct tm_tread {
 
   /**
    * The last free node.
+   * When free == bottom,
+   * there are no free nodes to allocated.
    */
   tm_node *bottom;
 
@@ -45,7 +47,7 @@ struct tm_tread {
    * Current count of nodes by color.
    * Includes tm_TOTAL, tm_B, tm_NU, tm_b, tm_b_NU stats.
    */
-  size_t  n[tm__LAST2];
+  size_t n[tm__LAST2];
 } tm_tread;
 
 

@@ -42,15 +42,17 @@ typedef struct tm_block {
   int id;
 
   /*! Block's actual size (including this header), multiple of tm_block_SIZE. */
-  size_t size;         
+  size_t size;
+
   /*! The type the block is assigned to.
    *  All tm_nodes parceled from this block will be of type->size.
    */ 
   struct tm_type *type;
+
   /*! The beginning of the allocation space. */
   char *begin;
 
-  /*! The end of allocation space.  When alloc reaches end, the block is fully parceled. */
+  /*! The end of allocation space.  When next_parcel reaches end, the block is fully parceled into nodes. */
   char *end;
 
   /*! The next parcel pointer for new tm_nodes.  Starts at begin.  Nodes are parceled by incrementing this attribute. */
