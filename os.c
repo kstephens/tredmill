@@ -231,7 +231,7 @@ void *_tm_os_alloc_aligned(size_t size)
    * If pointer to OS block is not aligned to tm_block_SIZE,
    */
   if ( ! tm_ptr_is_aligned_to_block(ptr) ) {
-    size_t offset = ((unsigned long) ptr) % tm_block_SIZE;
+    size_t offset = ((tm_ptr_word) ptr) % tm_block_SIZE;
     size_t left_over = tm_block_SIZE - offset;
     size_t new_size = size + left_over;
 

@@ -10,7 +10,6 @@
 #define tm_ptr_to_node_TEST 0
 #endif
 
-
 /****************************************************************************/
 /*! \defgroup pointer */
 /*@{*/
@@ -78,7 +77,7 @@ tm_block *tm_ptr_to_block(char *p)
   size_t offset; /*! The offset of the pptr in a tm_block. */
 
   /*! Find the offset of p in an aligned tm_block. */
-  offset = (((unsigned long) p) % tm_block_SIZE);
+  offset = (((tm_ptr_word) p) % tm_block_SIZE);
   b = p - offset;
   /*! If the pptr is directly at the beginning of the block, */
   if ( offset == 0 && p ) {
@@ -94,7 +93,7 @@ tm_block *tm_ptr_to_block(char *p)
    * If tm_ptr_AT_END_IS_VALID is false,
    * Mask off the tm_block_SIZE bits from the address.
    */
-  return (void*) ((unsigned long) p & tm_block_SIZE_MASK);
+  return (void*) ((tm_ptr_word) p & tm_block_SIZE_MASK);
 #endif /* tm_ptr_AT_END_IS_VALID */
 }
 
@@ -189,18 +188,18 @@ tm_node *tm_ptr_to_node(void *p)
 
   /*! Normalize p to node head by using its tm_type size. */
   {
-    unsigned long pp = (unsigned long) p;
-    unsigned long node_size = tm_block_node_size(b);
+    tm_ptr_word pp = (tm_ptr_word) p;
+    tm_ptr_word node_size = tm_block_node_size(b);
     tm_node *n;
     
     /*
     ** Translate away the block header.
     */
-    pp -= (unsigned long) b + tm_block_HDR_SIZE;
+    pp -= (tm_ptr_word) b + tm_block_HDR_SIZE;
 
 
     {
-      unsigned long node_off = pp % node_size;
+      tm_ptr_word node_off = pp % node_size;
 
       /**
        * If tm_ptr_AT_END_IS_VALID is true,
@@ -224,7 +223,7 @@ tm_node *tm_ptr_to_node(void *p)
 #if tm_ptr_AT_END_IS_VALID
       if ( node_off == 0 && pp ) {
 	pp -= node_size;
-	pp += (unsigned long) b + tm_block_HDR_SIZE;
+	pp += (tm_ptr_word) b + tm_block_HDR_SIZE;
 
 #if 0	
  	tm_msg("P nb p%p p0%p\n", (void*) p, (void*) pp);
@@ -273,7 +272,7 @@ tm_node *tm_ptr_to_node(void *p)
 	/**
 	 * Translate back to block header.
 	 */
-	pp += (unsigned long) b + tm_block_HDR_SIZE;
+	pp += (tm_ptr_word) b + tm_block_HDR_SIZE;
       }
     }
 

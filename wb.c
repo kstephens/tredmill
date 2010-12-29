@@ -31,9 +31,9 @@
 /* mutated bits indexed by page no. */
 bitset_t tm_wb_page_mutated_bits[bitset_ELEM_LEN(MAX_ADDR_SPACE / tm_PAGESIZE)];
 
-#define tm_wb_ptr_to_page_ptr(ptr) ((void *)(((unsigned long) (ptr)) & ~(tm_PAGESIZE-1)))
+#define tm_wb_ptr_to_page_ptr(ptr) ((void *)(((size_t) (ptr)) & ~(tm_PAGESIZE-1)))
 
-#define tm_wb_ptr_to_page_no(ptr) ((unsigned long) (ptr) / tm_PAGESIZE)
+#define tm_wb_ptr_to_page_no(ptr) ((size_t) (ptr) / tm_PAGESIZE)
 
 #define tm_wb_ptr_mutated_get(ptr) bitset_get(tm_wb_page_mutated_bits, tm_wb_ptr_to_page_no(ptr))
 #define tm_wb_ptr_mutated_set(ptr) bitset_set(tm_wb_page_mutated_bits, tm_wb_ptr_to_page_no(ptr))

@@ -37,28 +37,6 @@ void tm_type_init(tm_type *t, size_t size)
   /*! Initialize the tm_type node counts. */
   t->n = t->tread.n;
   
-#if 0
-  /* DELETE ME! */
-  /*! Initialize the tm_type.color_list. */
-  {
-    int j;
-    
-    for ( j = 0; j < sizeof(t->color_list) / sizeof(t->color_list[0]); ++ j ) {
-      tm_list_init(&t->color_list[j]);
-      tm_list_set_color(&t->color_list[j], j);
-
-#if 0
-      fprintf(stderr, "%p [%p %p]\n", 
-	      (void*) &t->color_list[j],
-	      (void*) tm_list_next(&t->color_list[j]),
-	      (void*) tm_list_prev(&t->color_list[j]));
-#endif
-
-      tm_assert(tm_list_first(&t->color_list[j]) == 0);
-    }
-  }
-#endif
-
   /*! Force a new tm_block to be allocated and parceled. */
   t->parcel_from_block = 0;
 

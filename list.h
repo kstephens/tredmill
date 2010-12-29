@@ -34,14 +34,14 @@ typedef struct tm_list {
     struct tm_list *_ptr;
 
     /*! Pointer word. */
-    unsigned long _word;
+    tm_ptr_word _word;
 
     struct {
 #ifndef TM_LIST__PREV__C
 #if defined(__i386__) || defined(__i486__)
 #define TM_LIST__PREV__C \
-      unsigned long _color : 2; \
-      unsigned long _bits  : sizeof(void*) * 8 - 2
+      tm_ptr_word _color : 2; \
+      tm_ptr_word _bits  : sizeof(void*) * 8 - 2
 #endif
 #endif
 
@@ -68,13 +68,13 @@ typedef struct tm_list {
 #define tm_list_set_next(l,x) (((tm_list*) (l))->_next = (x))
 
 /*! Sets the prev pointer of a tm_list element. */
-#define tm_list_set_prev(l,x) (((tm_list*) (l))->_prev._c._bits = ((unsigned long) (x) >> 2))
+#define tm_list_set_prev(l,x) (((tm_list*) (l))->_prev._c._bits = ((tm_ptr_word) (x) >> 2))
 
 /*! The next element of a tm_list element. */
 #define tm_list_next(l) ((void*) ((tm_list*) (l))->_next)
 
 /*! The prev element of a tm_list element. */
-#define tm_list_prev(l) ((void*) ((unsigned long) ((tm_list*) (l))->_prev._word & ~ 0x3UL))
+#define tm_list_prev(l) ((void*) ((tm_ptr_word) ((tm_list*) (l))->_prev._word & ~ 0x3UL))
 
 /*! Initialize a static tm_list element as empty and color == 0. */
 #define tm_list_INIT(N) tm_list _##N = { &_##N, { &_##N } }, *N = &_##N;
@@ -239,7 +239,7 @@ void * tm_list_take_first(void *_l)
 static __inline
 void tm_list_assert_layout()
 {
-  unsigned long word = 0x12345678UL;
+  tm_ptr_word word = 0x12345678UL;
   tm_list_INIT(l);
   tm_list_INIT(r);
   tm_list_INIT(x);
@@ -256,17 +256,17 @@ void tm_list_assert_layout()
   tm_assert(tm_list_color(l) == 0);
 
   tm_assert_test(sizeof(tm_list*) == sizeof(void*));
-  tm_assert_test(sizeof(tm_list*) == sizeof(unsigned long));
+  tm_assert_test(sizeof(tm_list*) == sizeof(tm_ptr_word));
 
   tm_assert_test(tm_list_next(l) == l);
   tm_assert_test(tm_list_prev(l) == l);
-  tm_assert_test(l->_prev._c._bits == ((unsigned long) (l)) >> 2);
+  tm_assert_test(l->_prev._c._bits == ((tm_ptr_word) (l)) >> 2);
   tm_assert_test(tm_list_color(l) == 0);
   
   tm_list_set_color(l, 3);
   tm_assert_test(tm_list_next(l) == l);
   tm_assert_test(tm_list_prev(l) == l);
-  tm_assert_test(l->_prev._c._bits == ((unsigned long) (l)) >> 2);
+  tm_assert_test(l->_prev._c._bits == ((tm_ptr_word) (l)) >> 2);
   tm_assert_test(tm_list_color(l) == 3);
 
   tm_list_set_color(r, 2);

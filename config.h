@@ -72,12 +72,21 @@ enum tm_config {
   tm_block_N_MAX = sizeof(void*) / tm_block_SIZE,
 };
 
+/*! Unsigned int that can hold void* */
+typedef size_t tm_ptr_word
+#if 0
+#if sizeof(void*) == sizeof(unsigned long long)
+typedef unsigned long long tm_ptr_word;
+#else
+typedef unsigned long tm_ptr_word
+#endif
+#endif
 
 /*! Mask to align tm_block pointers. */ 
-#define tm_block_SIZE_MASK ~(((unsigned long) tm_block_SIZE) - 1)
+#define tm_block_SIZE_MASK ~(((tm_ptr_word) tm_block_SIZE) - 1)
 
 /*! Mask to align page pointers. */ 
-#define tm_page_SIZE_MASK ~(((unsigned long) tm_page_SIZE) - 1)
+#define tm_page_SIZE_MASK ~(((tm_ptr_word) tm_page_SIZE) - 1)
 
 /*@}*/
 

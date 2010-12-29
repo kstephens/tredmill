@@ -60,7 +60,7 @@ typedef struct tm_block {
 
   /**
    * Number of nodes for this block, indexed by tm_color: includes tm_TOTAL.
-   * - tm_CAPACITY: capacity of this block in node of this size.
+   * - tm_CAPACITY: capacity of this block in nodes of this size.
    */
   size_t n[tm_CAPACITY + 1];
 

@@ -9,17 +9,17 @@
 
 
 /*! True if ptr is aligned to a tm_block */
-#define tm_ptr_is_aligned_to_block(ptr) !(((unsigned long) ptr) % tm_block_SIZE)
+#define tm_ptr_is_aligned_to_block(ptr) !(((tm_ptr_word) ptr) % tm_block_SIZE)
 
 /*! True if ptr is aligned to a OS page. */
-#define tm_ptr_is_aligned_to_page(ptr) !(((unsigned long) ptr) % tm_page_SIZE)
+#define tm_ptr_is_aligned_to_page(ptr) !(((tm_ptr_word) ptr) % tm_page_SIZE)
 
 
 /***************************************************************************/
 
 
 /*! Returns the index of a ptr into page-orientated bit map */ 
-#define tm_page_index(X) (((unsigned long) X) / tm_page_SIZE)
+#define tm_page_index(X) (((tm_ptr_word) X) / tm_page_SIZE)
 
 
 /**

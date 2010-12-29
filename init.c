@@ -74,7 +74,7 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
 {
   int i;
 
-  tm_assert(sizeof(unsigned long) == sizeof(void *));
+  tm_assert(sizeof(tm_ptr_word) == sizeof(void *));
 
   /*! Initialize allocation log. */
   tm_alloc_log_init();
@@ -186,8 +186,8 @@ void tm_init(int *argcp, char ***argvp, char ***envpp)
       /* Attempt to nudge to page boundaries. */
       {
 	size_t stack_page_size = 4096;
-	l = (void*) ((unsigned long) (l) - ((unsigned long) (l) % stack_page_size));
-	h = (void*) ((unsigned long) (h) + (stack_page_size - ((unsigned long) (h) % stack_page_size)));
+	l = (void*) ((tm_ptr_word) (l) - ((tm_ptr_word) (l) % stack_page_size));
+	h = (void*) ((tm_ptr_word) (h) + (stack_page_size - ((tm_ptr_word) (h) % stack_page_size)));
       }
 
       i = tm_root_add("stack", l, h);

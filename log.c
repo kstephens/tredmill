@@ -42,9 +42,9 @@ void tm_alloc_log(void *ptr)
   if ( tm_alloc_log_fh ) {
     if ( log_id ++ % log_ratio == 0 ) {
       fprintf(tm_alloc_log_fh,
-	      "%6lu %12lu %6lu %6lu %6lu %6lu %6lu %6lu %6lu %6lu\n",  
+	      "%6lu %24llu %6lu %6lu %6lu %6lu %6lu %6lu %6lu %6lu\n",  
 	      (unsigned long) tm.alloc_id,
-	      (unsigned long) ptr,
+	      (unsigned long long) ptr,
 	      (unsigned long) tm.n[WHITE],
 	      (unsigned long) tm.n[ECRU],
 	      (unsigned long) tm.n[GREY],
