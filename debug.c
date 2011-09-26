@@ -232,10 +232,10 @@ int _tm_sweep_is_error;
  */
 void tm_validate_lists()
 {
-  int j;
+  // int j; // UNUSED
   tm_type *t;
   tm_block *b;
-  tm_node *node;
+  // tm_node *node; // UNUSED
   size_t n[tm__LAST2];
   size_t bn[tm__LAST2];
   size_t tn[tm__LAST2];

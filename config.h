@@ -6,6 +6,7 @@
 #ifndef _tredmill_CONFIG_H
 #define _tredmill_CONFIG_H
 
+#include <stddef.h> /* size_t */
 #include <limits.h> /* PAGESIZE */
 
 /****************************************************************************/
@@ -73,7 +74,7 @@ enum tm_config {
 };
 
 /*! Unsigned int that can hold void* */
-typedef size_t tm_ptr_word
+typedef size_t tm_ptr_word;
 #if 0
 #if sizeof(void*) == sizeof(unsigned long long)
 typedef unsigned long long tm_ptr_word;

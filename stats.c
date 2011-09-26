@@ -187,7 +187,7 @@ void tm_print_color_transition_stats()
  */
 void tm_print_phase_transition_stats()
 {
-  int i, j;
+  // int i, j; // UNUSED
   
   // tm_assert(sizeof(tm_phase_name) / sizeof(tm_phase_name[0]) == tm_phase_END + 1);
 
@@ -419,7 +419,7 @@ void tm_time_stat_print_(tm_time_stat *ts, int flags, size_t *alloc_count_p)
  */
 void tm_print_time_stats()
 {
-  int i;
+  // int i; // UNUSED
 
   tm_msg_enable("T", 1);
 

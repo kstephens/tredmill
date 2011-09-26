@@ -6,6 +6,7 @@
 #ifndef _tredmill_LIST_H
 #define _tredmill_LIST_H
 
+#include "tredmill/config.h"
 #include "tredmill/debug.h"
 
 /****************************************************************************/
